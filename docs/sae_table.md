@@ -38,20 +38,22 @@ For more details, see our whitepaper.
 
 ## Vanilla SAEs (CLS only)
 
-| Model  | Layer | Sublayer   | l1 coeff. | % Explained var. | Avg CLS L0 | Cos sim | Recon cos sim | CE     | Recon CE | Zero abl CE | % CE recovered | % Alive features |
-|--------|-------|------------|-----------|------------------|------------|---------|----------------|--------|-----------|--------------|----------------|------------------|
-| [link] | 0     | resid_post | 2e-8      | 82               | 934.83     | 0.98008 | 0.99995        | 6.7622 | 6.7622    | 6.9084       | 99.9984        | 4.33             |
-| [link] | 1     | resid_post | 8e-6      | 85               | 314.13     | 0.97211 | 0.99994        | 6.7622 | 6.7622    | 6.9083       | 100.00         | 2.82             |
-| [link] | 2     | resid_post | 9e-8      | 96               | 711.84     | 0.98831 | 0.99997        | 6.7622 | 6.7622    | 6.9083       | 99.9977        | 2.54             |
-| [link] | 3     | resid_post | 1e-8      | 95               | 687.41     | 0.98397 | 0.99994        | 6.7622 | 6.7622    | 6.9085       | 99.9998        | 4.49             |
-| [link] | 4     | resid_post | 9e-8      | 95               | 681.08     | 0.98092 | 0.99988        | 6.7622 | 6.7622    | 6.9082       | 100.00         | 15.75            |
-| [link] | 5     | resid_post | 1e-7      | 94               | 506.77     | 0.97404 | 0.99966        | 6.7622 | 6.7622    | 6.9081       | 99.9911        | 16.80            |
-| [link] | 6     | resid_post | 1e-8      | 92               | 423.70     | 0.96474 | 0.99913        | 6.7622 | 6.7622    | 6.9083       | 99.9971        | 29.46            |
-| [link] | 7     | resid_post | 2e-6      | 88               | 492.68     | 0.93899 | 0.99737        | 6.7622 | 6.7622    | 6.9082       | 99.9583        | 51.68            |
-| [link] | 8     | resid_post | 4e-8      | 76               | 623.01     | 0.89168 | 0.99110        | 6.7622 | 6.7625    | 6.9087       | 99.7631        | 82.07            |
-| [link] | 9     | resid_post | 1e-12     | 74               | 521.90     | 0.87076 | 0.98191        | 6.7622 | 6.7628    | 6.9083       | 99.5425        | 93.68            |
-| [link] | 10    | resid_post | 3e-7      | 74               | 533.94     | 0.87646 | 0.96514        | 6.7622 | 6.7635    | 6.9082       | 99.1070        | 99.98            |
-| [link] | 11    | resid_post | 1e-8      | 65               | 386.09     | 0.81890 | 0.89607        | 6.7622 | 6.7853    | 6.9086       | 84.1918        | 99.996           |
+## Vanilla SAEs (CLS only)
+
+| Model | Layer | Sublayer   | l1 coeff. | % Explained var. | Avg CLS L0 | Cos sim | Recon cos sim | CE     | Recon CE | Zero abl CE | % CE recovered | % Alive features |
+|-------|-------|------------|-----------|------------------|------------|---------|----------------|--------|-----------|--------------|----------------|------------------|
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_0-hook_resid_post-936.799987792969-82)  | 0     | resid_post | 2e-8      | 82               | 934.83     | 0.98008 | 0.99995        | 6.7622 | 6.7622    | 6.9084       | 99.9984        | 4.33             |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_1-hook_resid_post-314.175018310547-85)  | 1     | resid_post | 8e-6      | 85               | 314.13     | 0.97211 | 0.99994        | 6.7622 | 6.7622    | 6.9083       | 100.00         | 2.82             |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_2-hook_resid_post-711.121887207031-96)  | 2     | resid_post | 9e-8      | 96               | 711.84     | 0.98831 | 0.99997        | 6.7622 | 6.7622    | 6.9083       | 99.9977        | 2.54             |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_3-hook_resid_post-686.334411621094-95)  | 3     | resid_post | 1e-8      | 95               | 687.41     | 0.98397 | 0.99994        | 6.7622 | 6.7622    | 6.9085       | 99.9998        | 4.49             |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_4-hook_resid_post-682.543762207031-95)  | 4     | resid_post | 9e-8      | 95               | 681.08     | 0.98092 | 0.99988        | 6.7622 | 6.7622    | 6.9082       | 100.00         | 15.75            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_5-hook_resid_post-510.356262207031-94)  | 5     | resid_post | 1e-7      | 94               | 506.77     | 0.97404 | 0.99966        | 6.7622 | 6.7622    | 6.9081       | 99.9911        | 16.80            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_6-hook_resid_post-430.556243896484-92)  | 6     | resid_post | 1e-8      | 92               | 423.70     | 0.96474 | 0.99913        | 6.7622 | 6.7622    | 6.9083       | 99.9971        | 29.46            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_7-hook_resid_post-492.959381103516-88)  | 7     | resid_post | 2e-6      | 88               | 492.68     | 0.93899 | 0.99737        | 6.7622 | 6.7622    | 6.9082       | 99.9583        | 51.68            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_8-hook_resid_post-635.018737792969-76)  | 8     | resid_post | 4e-8      | 76               | 623.01     | 0.89168 | 0.99110        | 6.7622 | 6.7625    | 6.9087       | 99.7631        | 82.07            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_9-hook_resid_post-518.621887207031-74)  | 9     | resid_post | 1e-12     | 74               | 521.90     | 0.87076 | 0.98191        | 6.7622 | 6.7628    | 6.9083       | 99.5425        | 93.68            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_10-hook_resid_post-552.512512207031-74) | 10    | resid_post | 3e-7      | 74               | 533.94     | 0.87646 | 0.96514        | 6.7622 | 6.7635    | 6.9082       | 99.1070        | 99.98            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_11-hook_resid_post-383.75-65)          | 11    | resid_post | 1e-8      | 65               | 386.09     | 0.81890 | 0.89607        | 6.7622 | 6.7853    | 6.9086       | 84.1918        | 99.996           |
 
 ## Top K SAEs (CLS only, k = 64)
 | Model  | Layer | Sublayer   | % Explained var. | Avg CLS L0 | Cos sim | Recon cos sim | CE     | Recon CE | Zero abl CE | % CE recovered | % Alive features |
