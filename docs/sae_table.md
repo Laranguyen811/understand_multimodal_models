@@ -1,6 +1,6 @@
 # CLIP-ViT-B-32 Sparse Autoencoder Performance
 
-For CLIP, we recommend using the All Patch SAEs, which we trained on all patches (CLS + spatial). 
+For CLIP, we recommend using the **Vanilla SAEs (All Patches)**, which we trained on all patches (CLS + spatial). 
 
 We experimented with CLS only, CLS only top k (k=64), and spatial patches only as well. Empirically, we get the best results with All Patches.
 
@@ -54,22 +54,21 @@ For more details, see our whitepaper.
 | [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_11-hook_resid_post-383.75-65)          | 11    | resid_post | 1e-8      | 65               | 386.09     | 0.81890 | 0.89607        | 6.7622 | 6.7853    | 6.9086       | 84.1918        | 99.996           |
 
 ## Top K SAEs (CLS only, k = 64)
-| Model  | Layer | Sublayer   | % Explained var. | Avg CLS L0 | Cos sim | Recon cos sim | CE     | Recon CE | Zero abl CE | % CE recovered | % Alive features |
-|--------|-------|------------|------------------|------------|---------|----------------|--------|-----------|--------------|----------------|------------------|
-| [link] | 0     | resid_post | 90               | 64         | 0.98764 | 0.99998        | 6.7622 | 6.7622    | 6.9084       | 99.995         | 46.80            |
-| [link] | 1     | resid_post | 96               | 64         | 0.99429 | 0.99999        | 6.7622 | 6.7622    | 6.9083       | 100.00         | 4.86             |
-| [link] | 2     | resid_post | 96               | 64         | 0.99000 | 0.99998        | 6.7622 | 6.7622    | 6.9083       | 100.00         | 5.50             |
-| [link] | 3     | resid_post | 95               | 64         | 0.98403 | 0.99995        | 6.7622 | 6.7622    | 6.9085       | 100.00         | 5.21             |
-| [link] | 4     | resid_post | 94               | 64         | 0.97485 | 0.99986        | 6.7621 | 6.7622    | 6.9082       | 99.998         | 6.81             |
-| [link] | 5     | resid_post | 93               | 64         | 0.96985 | 0.99962        | 6.7622 | 6.7622    | 6.9081       | 99.997         | 21.89            |
-| [link] | 6     | resid_post | 92               | 64         | 0.96401 | 0.99912        | 6.7622 | 6.7622    | 6.9083       | 100.00         | 28.81            |
-| [link] | 7     | resid_post | 90               | 64         | 0.95057 | 0.99797        | 6.7622 | 6.7621    | 6.9082       | 100.03         | 65.84            |
-| [link] | 8     | resid_post | 87               | 64         | 0.93029 | 0.99475        | 6.7622 | 6.7620    | 6.9087       | 100.11         | 93.75            |
-| [link] | 9     | resid_post | 85               | 64         | 0.91814 | 0.98865        | 6.7622 | 6.7616    | 6.9083       | 100.43         | 98.90            |
-| [link] | 10    | resid_post | 86               | 64         | 0.93072 | 0.97929        | 6.7622 | 6.7604    | 6.9082       | 101.19         | 94.55            |
-| [link] | 11    | resid_post | 84               | 64         | 0.91880 | 0.94856        | 6.7622 | 6.7578    | 6.9086       | 102.97         | 97.99            |
 
-## Vanilla Spatial Patches
+| Model | Layer | Sublayer   | % Explained var. | Avg CLS L0 | Cos sim | Recon cos sim | CE     | Recon CE | Zero abl CE | % CE recovered | % Alive features |
+|-------|-------|------------|------------------|------------|---------|----------------|--------|-----------|--------------|----------------|------------------|
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_0-hook_resid_post)  | 0     | resid_post | 90               | 64         | 0.98764 | 0.99998        | 6.7622 | 6.7622    | 6.9084       | 99.995         | 46.80            |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_1-hook_resid_post)  | 1     | resid_post | 96               | 64         | 0.99429 | 0.99999        | 6.7622 | 6.7622    | 6.9083       | 100.00         | 4.86             |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_2-hook_resid_post)  | 2     | resid_post | 96               | 64         | 0.99000 | 0.99998        | 6.7622 | 6.7622    | 6.9083       | 100.00         | 5.50             |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_3-hook_resid_post)  | 3     | resid_post | 95               | 64         | 0.98403 | 0.99995        | 6.7622 | 6.7622    | 6.9085       | 100.00         | 5.21             |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_4-hook_resid_post)  | 4     | resid_post | 94               | 64         | 0.97485 | 0.99986        | 6.7621 | 6.7622    | 6.9082       | 99.998         | 6.81             |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_5-hook_resid_post)  | 5     | resid_post | 93               | 64         | 0.96985 | 0.99962        | 6.7622 | 6.7622    | 6.9081       | 99.997         | 21.89            |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_6-hook_resid_post)  | 6     | resid_post | 92               | 64         | 0.96401 | 0.99912        | 6.7622 | 6.7622    | 6.9083       | 100.00         | 28.81            |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_7-hook_resid_post)  | 7     | resid_post | 90               | 64         | 0.95057 | 0.99797        | 6.7622 | 6.7621    | 6.9082       | 100.03         | 65.84            |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_8-hook_resid_post)  | 8     | resid_post | 87               | 64         | 0.93029 | 0.99475        | 6.7622 | 6.7620    | 6.9087       | 100.11         | 93.75            |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_9-hook_resid_post)  | 9     | resid_post | 85               | 64         | 0.91814 | 0.98865        | 6.7622 | 6.7616    | 6.9083       | 100.43         | 98.90            |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_10-hook_resid_post) | 10    | resid_post | 86               | 64         | 0.93072 | 0.97929        | 6.7622 | 6.7604    | 6.9082       | 101.19         | 94.55            |
+| [link](https://huggingface.co/Prisma-Multimodal/sae-top_k-64-cls_only-layer_11-hook_resid_post) | 11    | resid_post | 84               | 64         | 0.91880 | 0.94856        | 6.7622 | 6.7578    | 6.9086       | 102.97         | 97.99            |
 
 ## Vanilla Spatial Patches
 
