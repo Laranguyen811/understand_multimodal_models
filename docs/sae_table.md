@@ -38,8 +38,6 @@ For more details, see our whitepaper.
 
 ## Vanilla SAEs (CLS only)
 
-## Vanilla SAEs (CLS only)
-
 | Model | Layer | Sublayer   | l1 coeff. | % Explained var. | Avg CLS L0 | Cos sim | Recon cos sim | CE     | Recon CE | Zero abl CE | % CE recovered | % Alive features |
 |-------|-------|------------|-----------|------------------|------------|---------|----------------|--------|-----------|--------------|----------------|------------------|
 | [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-CLS_0-hook_resid_post-936.799987792969-82)  | 0     | resid_post | 2e-8      | 82               | 934.83     | 0.98008 | 0.99995        | 6.7622 | 6.7622    | 6.9084       | 99.9984        | 4.33             |
@@ -72,20 +70,22 @@ For more details, see our whitepaper.
 | [link] | 11    | resid_post | 84               | 64         | 0.91880 | 0.94856        | 6.7622 | 6.7578    | 6.9086       | 102.97         | 97.99            |
 
 ## Vanilla Spatial Patches
-| Model  | Layer | Sublayer   | l1 coeff. | % Explained var. | Avg L0   | Cos sim | Recon cos sim | CE     | Recon CE | Zero abl CE | % CE recovered | % Alive features |
-|--------|-------|------------|-----------|------------------|----------|---------|----------------|--------|-----------|--------------|----------------|------------------|
-| [link] | 0     | resid_post | 1e-12     | 99               | 989.19   | 0.99    | 0.99           | 6.7621 | 6.7621    | 6.9084       | 99.9981        | 100.00           |
-| [link] | 1     | resid_post | 3e-11     | 99               | 757.83   | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9083       | 99.9969        | 45.39            |
-| [link] | 2     | resid_post | 4e-12     | 99               | 1007.89  | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9083       | 100.00         | 97.93            |
-| [link] | 3     | resid_post | 2e-8      | 99               | 935.06   | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9085       | 99.9882        | 100.00           |
-| [link] | 4     | resid_post | 3e-8      | 99               | 965.15   | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9082       | 99.9842        | 100.00           |
-| [link] | 5     | resid_post | 1e-8      | 99               | 966.38   | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9081       | 99.9961        | 100.00           |
-| [link] | 6     | resid_post | 1e-8      | 99               | 1006.62  | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9083       | 100.00         | 99.97            |
-| [link] | 7     | resid_post | 1e-8      | 99               | 984.19   | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9082       | 100.00         | 100.00           |
-| [link] | 8     | resid_post | 3e-8      | 99               | 965.12   | 0.99    | 1.00           | 6.7622 | 6.7622    | 6.9087       | 100.00         | 92.37            |
-| [link] | 9     | resid_post | 9e-8      | 99               | 854.92   | 0.99    | 1.00           | 6.7622 | 6.7622    | 6.9083       | 99.9991        | 85.43            |
-| [link] | 11    | resid_post | 3e-7      | 99               | 829.09   | 0.99    | 1.00           | 6.7622 | 6.7622    | 6.9086       | 100.00         | 55.71            |
 
+## Vanilla Spatial Patches
+
+| Model | Layer | Sublayer   | l1 coeff. | % Explained var. | Avg L0   | Cos sim | Recon cos sim | CE     | Recon CE | Zero abl CE | % CE recovered | % Alive features |
+|-------|-------|------------|-----------|------------------|----------|---------|----------------|--------|-----------|--------------|----------------|------------------|
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_0-hook_resid_post-989.203430175781-99)  | 0     | resid_post | 1e-12     | 99               | 989.19   | 0.99    | 0.99           | 6.7621 | 6.7621    | 6.9084       | 99.9981        | 100.00           |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_1-hook_resid_post-757.82958984375-99)   | 1     | resid_post | 3e-11     | 99               | 757.83   | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9083       | 99.9969        | 45.39            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_2-hook_resid_post-1007.89801025391-99)  | 2     | resid_post | 4e-12     | 99               | 1007.89  | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9083       | 100.00         | 97.93            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_3-hook_resid_post-935.601989746094-99)  | 3     | resid_post | 2e-8      | 99               | 935.06   | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9085       | 99.9882        | 100.00           |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_4-hook_resid_post-965.410095214844-99)  | 4     | resid_post | 3e-8      | 99               | 965.15   | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9082       | 99.9842        | 100.00           |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_5-hook_resid_post-964.674072265625-99)  | 5     | resid_post | 1e-8      | 99               | 966.38   | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9081       | 99.9961        | 100.00           |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_6-hook_resid_post-1006.57165527344-99)  | 6     | resid_post | 1e-8      | 99               | 1006.62  | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9083       | 100.00         | 99.97            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_7-hook_resid_post-984.1376953125-99)    | 7     | resid_post | 1e-8      | 99               | 984.19   | 0.99    | 0.99           | 6.7622 | 6.7622    | 6.9082       | 100.00         | 100.00           |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_8-hook_resid_post-965.125-99)           | 8     | resid_post | 3e-8      | 99               | 965.12   | 0.99    | 1.00           | 6.7622 | 6.7622    | 6.9087       | 100.00         | 92.37            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_9-hook_resid_post-854.891540527344-99)  | 9     | resid_post | 9e-8      | 99               | 854.92   | 0.99    | 1.00           | 6.7622 | 6.7622    | 6.9083       | 99.9991        | 85.43            |
+| [link](https://huggingface.co/Prisma-Multimodal/imagenet-sweep-vanilla-x64-Spatial_max_11-hook_resid_post-829.0498046875-99)   | 11    | resid_post | 3e-7      | 99               | 829.09   | 0.99    | 1.00           | 6.7622 | 6.7622    | 6.9086       | 100.00         | 55.71            |
 
 # DINO-B-32 Sparse Autoencoder Performance
 
