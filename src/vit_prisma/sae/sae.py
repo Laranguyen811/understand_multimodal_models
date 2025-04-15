@@ -402,26 +402,6 @@ class SparseAutoencoder(HookedRootModule, ABC):
 
         return instance
 
-        # # Convert config to VisionModelSAERunnerConfig if necessary
-        # if not isinstance(config, VisionModelSAERunnerConfig):
-        #     config = VisionModelSAERunnerConfig(**config)
-
-        # # Handle legacy issues
-        # if not hasattr(config, "activation_fn_kwargs"):
-        #     config.activation_fn_kwargs = {}
-
-        # # Update loaded config with current config if provided
-        # if current_cfg is not None:
-        #     for key, value in vars(current_cfg).items():
-        #         if hasattr(config, key):
-        #             setattr(config, key, value)
-
-        # # Create an instance of the class using the loaded configuration
-        # instance = cls(cfg=config)
-        # instance.load_state_dict(model_state_dict)
-
-        # return instance
-
     @classmethod
     def load_from_pretrained(cls, weights_path, current_cfg=None, config_path=None):
         """
@@ -614,13 +594,6 @@ class StandardSparseAutoencoder(SparseAutoencoder):
     ):
 
       
-        # if self.cfg.cls_token_only and not self.cfg.is_training: # only pass in CLS token if CLS SAE
-        #     remaining_patches = x[:, 1:, :]
-        #     x = x[:, 0:1, :]
-        # if self.cfg.use_patches_only and not self.cfg.is_training: # only pass in patches token if Patch SAE
-        #     remaining_patches = x[:, 0:1,:]
-        #     x = x[:, 1:, :]
-
         # Encode input and get feature activations and pre-activation hidden state
         _, feature_acts, hidden_pre = self.encode(x, return_hidden_pre=True)
         sae_out = self.decode(feature_acts)
@@ -650,11 +623,6 @@ class StandardSparseAutoencoder(SparseAutoencoder):
 
         # Placeholder for auxiliary reconstruction loss
         aux_reconstruction_loss = torch.tensor(0.0) 
-
-        # if self.cfg.cls_token_only and not self.cfg.is_training:
-        #     sae_out = torch.cat((sae_out, remaining_patches), dim=1)
-        # if self.cfg.use_patches_only and not self.cfg.is_training:
-        #     sae_out = torch.cat((remaining_patches, sae_out), dim=1)
 
         if hasattr(self.cfg, "return_out_only"): # to work with HookedSAEViT efficiently
             if self.cfg.return_out_only:    
@@ -753,16 +721,6 @@ class GatedSparseAutoencoder(SparseAutoencoder):
         return sae_out
 
     def forward(self, x: torch.Tensor, *args, **kwargs):
-        # Encode input and get feature activations and pre-activation hidden state
-
-        # if self.cfg.cls_token_only and not self.cfg.is_training: # only pass in CLS token if CLS SAE
-        #     remaining_patches = x[:, 1:, :]
-        #     x = x[:, 0:1, :]
-        # if self.cfg.use_patches_only and not self.cfg.is_training: # only pass in patches token if Patch SAE
-        #     remaining_patches = x[:, 0:1,:]
-        #     x = x[:, 1:, :]
-
-
         
         sae_in, feature_acts = self.encode(x)
         sae_out = self.decode(feature_acts)
@@ -790,13 +748,6 @@ class GatedSparseAutoencoder(SparseAutoencoder):
         # Initialize ghost residual loss (not used for gated SAEs)
         mse_loss_ghost_resid = self.zero_loss
 
-
-        
-        # if self.cfg.cls_token_only and not self.cfg.is_training:
-        #     sae_out = torch.cat((sae_out, remaining_patches), dim=1)
-        # if self.cfg.use_patches_only and not self.cfg.is_training:
-        #     sae_out = torch.cat((remaining_patches, sae_out), dim=1)
-        
 
         if hasattr(self.cfg, "return_out_only"): # to work with HookedSAEViT efficiently
             if self.cfg.return_out_only:    

@@ -59,7 +59,7 @@ def wandb_log_suffix(cfg: Any, hyperparams: Any):
 
 
 class VisionSAETrainer:
-    def __init__(self, cfg: VisionModelSAERunnerConfig):
+    def __init__(self, cfg: VisionModelSAERunnerConfig, model, dataset, eval_dataset=None):
         self.cfg = cfg
         self.is_transcoder = self.cfg.is_transcoder
 
@@ -68,7 +68,7 @@ class VisionSAETrainer:
         self.bad_run_check = (
             True if self.cfg.min_l0 and self.cfg.min_explained_variance else False
         )
-        self.model = load_model(self.cfg, self.cfg.model_name)
+        self.model = model
 
         if self.is_transcoder:
             self.sparse_coder = Transcoder(self.cfg)
@@ -80,7 +80,6 @@ class VisionSAETrainer:
             else:
                 raise ValueError(f"Loading of {self.cfg.architecture} not supported")
 
-        dataset, eval_dataset = VisionSAETrainer.load_dataset(self.cfg)
         self.dataset = dataset
         self.eval_dataset = eval_dataset
         self.activations_store = self.initialize_activations_store(
