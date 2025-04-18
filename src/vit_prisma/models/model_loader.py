@@ -120,6 +120,9 @@ PASSING_MODELS = {
     "open-clip:laion/CLIP-ViT-bigG-14-laion2B-39B-b160k",
     "facebook/dino-vitb16",
     "facebook/dino-vitb8",
+    "openai/clip-vit-large-patch14-336",
+    "openai/clip-vit-large-patch14",
+    "openai/clip-vit-base-patch32",
 }
 
 FAILING_MODELS = {
@@ -148,7 +151,6 @@ FAILING_MODELS = {
     "open-clip:timm/vit_betwixt_patch32_clip_224.tinyclip_laion400m",
     "open-clip:timm/vit_gigantic_patch14_clip_224.metaclip_2pt5b",
     "open-clip:timm/vit_huge_patch14_clip_224.metaclip_2pt5b",
-    "openai/clip-vit-base-patch32",  # f16, f32 issues?
     "facebook/dino-vits16",
     "facebook/dino-vits8",
 }
@@ -612,6 +614,11 @@ def load_original_weights(
         dtype = kwargs["torch_dtype"]
         del kwargs["torch_dtype"]
 
+    # Get local_path from kwargs if it exists
+    local_path = kwargs.pop("local_path", None)
+    if local_path is not None and category != ModelCategory.OPEN_CLIP:
+        raise ValueError("Local path loading is only supported for OpenCLIP models")
+
     # Special handling for EVA02 models
     if (
         "eva02" in model_name.lower() or "eva_" in model_name.lower()
@@ -626,7 +633,7 @@ def load_original_weights(
         return _load_clip_weights(model_name, dtype, **kwargs)
 
     elif category == ModelCategory.OPEN_CLIP:
-        return _load_open_clip_weights(model_name, **kwargs)
+        return _load_open_clip_weights(model_name, local_path=local_path, **kwargs)
 
     elif category == ModelCategory.DINO:
         return _load_dino_weights(model_name, dtype, **kwargs)
@@ -765,12 +772,15 @@ def _load_clip_weights(model_name, dtype, **kwargs):
     return model
 
 
-def _load_open_clip_weights(model_name, **kwargs):
+def _load_open_clip_weights(model_name, local_path=None, **kwargs):
     """Load weights from an OpenCLIP model."""
-    checkpoint_path = download_pretrained_from_hf(
-        remove_open_clip_prefix(model_name),
-        filename="open_clip_pytorch_model.bin",
-    )
+    if local_path is not None:
+        checkpoint_path = local_path
+    else:
+        checkpoint_path = download_pretrained_from_hf(
+            remove_open_clip_prefix(model_name),
+            filename="open_clip_pytorch_model.bin",
+        )
     return load_state_dict(checkpoint_path)
 
 
