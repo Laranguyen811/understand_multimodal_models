@@ -87,6 +87,8 @@ For more details, see our whitepaper.
 
 # DINO-B-32 Sparse Autoencoder Performance
 
+## Vanilla SAEs (All Patches)
+
 | Model | Layer | Sublayer | Avg L0 | % Explained var. | Avg CLS L0 | Cos sim | CE | Recon CE | Zero abl CE | % CE Recovered |
 |-------|-------|----------|--------|------------------|-------------|----------|------|-----------|---------------|----------------|
 | [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_0-resid_post-507-98)  | 0  | resid_post | 507  | 98 | 347  | 0.95009 | 1.885033 | 1.936518 | 7.2714 | 99.04 |
