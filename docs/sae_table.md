@@ -87,3 +87,19 @@ For more details, see our whitepaper.
 
 # DINO-B-32 Sparse Autoencoder Performance
 
+| Model | Layer | Sublayer | Avg L0 | % Explained var. | Avg CLS L0 | Cos sim | CE | Recon CE | Zero abl CE | % CE Recovered |
+|-------|-------|----------|--------|------------------|-------------|----------|------|-----------|---------------|----------------|
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_0-resid_post-507-98)  | 0  | resid_post | 507  | 98 | 347  | 0.95009 | 1.885033 | 1.936518 | 7.2714 | 99.04 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_1-resid_post-549-95)  | 1  | resid_post | 549  | 95 | 959  | 0.93071 | 1.885100 | 1.998274 | 7.2154 | 97.88 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_2-resid_post-661-95)  | 2  | resid_post | 812  | 95 | 696  | 0.95600 | 1.885134 | 2.006115 | 7.2015 | 97.72 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_3-resid_post-989-95)  | 3  | resid_post | 989  | 95 | 616  | 0.96315 | 1.885131 | 1.961913 | 7.2068 | 98.56 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_4-resid_post-876-99)  | 4  | resid_post | 876  | 99 | 845  | 0.99856 | 1.885224 | 1.883169 | 7.1636 | 100.04 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_5-resid_post-1001-98) | 5  | resid_post | 1001 | 98 | 889  | 0.99129 | 1.885353 | 1.875520 | 7.1412 | 100.19 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_6-resid_post-962-99)  | 6  | resid_post | 962  | 99 | 950  | 0.99945 | 1.885239 | 1.872594 | 7.1480 | 100.24 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_7-resid_post-1086-98) | 7  | resid_post | 1086 | 98 | 1041 | 0.99341 | 1.885371 | 1.869443 | 7.1694 | 100.30 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_8-resid_post-530-90)  | 8  | resid_post | 530  | 90 | 529  | 0.94750 | 1.885511 | 1.978638 | 7.1315 | 98.22 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_9-resid_post-1105-99) | 9  | resid_post | 1105 | 99 | 1090 | 0.99541 | 1.885341 | 1.894026 | 7.0781 | 99.83 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_10-resid_post-835-99) | 10 | resid_post | 835  | 99 | 839  | 0.99987 | 1.885371 | 1.884487 | 7.3606 | 100.02 |
+| [link](https://huggingface.co/Prisma-Multimodal/DINO-vanilla-x64-all_patches_11-resid_post-1085-99) | 11 | resid_post | 1085 | 99 | 1084 | 0.99673 | 1.885370 | 1.911608 | 6.9078 | 99.48 |
+
+
