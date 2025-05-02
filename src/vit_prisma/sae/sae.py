@@ -148,7 +148,6 @@ class SparseAutoencoder(HookedRootModule, ABC):
         mse_loss = (mse_loss / norm_factor).mean()
         return mse_loss
 
-
     def _compute_ghost_residual_loss(
         self,
         x: torch.Tensor,
@@ -180,12 +179,18 @@ class SparseAutoencoder(HookedRootModule, ABC):
         return mse_loss_ghost_resid
 
     @torch.no_grad()
-    def initialize_b_dec_with_precalculated(self, origin: torch.Tensor, transcoder_dec_b: torch.Tensor = None):
+    def initialize_b_dec_with_precalculated(
+        self, origin: torch.Tensor, transcoder_dec_b: torch.Tensor = None
+    ):
         out = origin.clone().detach().to(dtype=self.dtype, device=self.device)
         self.b_dec.data = out
 
         if transcoder_dec_b is not None:
-            transcoder_dec_b = transcoder_dec_b.clone().detach().to(dtype=self.dtype, device=self.device)
+            transcoder_dec_b = (
+                transcoder_dec_b.clone()
+                .detach()
+                .to(dtype=self.dtype, device=self.device)
+            )
             self.b_dec_out.data = transcoder_dec_b
 
     @torch.no_grad()
@@ -505,6 +510,7 @@ class SparseAutoencoder(HookedRootModule, ABC):
         # Instantiate the appropriate subclass based on architecture
         if loaded_cfg.is_transcoder:
             from vit_prisma.transcoders.transcoder import Transcoder
+
             model_cls = Transcoder
         elif loaded_cfg.architecture == "standard":
             model_cls = StandardSparseAutoencoder
@@ -590,10 +596,8 @@ class StandardSparseAutoencoder(SparseAutoencoder):
 
     def forward(
         self, x: torch.Tensor, dead_neuron_mask: torch.Tensor = None, *args, **kwargs
-        
     ):
 
-      
         # Encode input and get feature activations and pre-activation hidden state
         _, feature_acts, hidden_pre = self.encode(x, return_hidden_pre=True)
         sae_out = self.decode(feature_acts)
@@ -622,10 +626,12 @@ class StandardSparseAutoencoder(SparseAutoencoder):
         loss = mse_loss + (l1_loss if l1_loss is not None else 0) + mse_loss_ghost_resid
 
         # Placeholder for auxiliary reconstruction loss
-        aux_reconstruction_loss = torch.tensor(0.0) 
+        aux_reconstruction_loss = torch.tensor(0.0)
 
-        if hasattr(self.cfg, "return_out_only"): # to work with HookedSAEViT efficiently
-            if self.cfg.return_out_only:    
+        if hasattr(
+            self.cfg, "return_out_only"
+        ):  # to work with HookedSAEViT efficiently
+            if self.cfg.return_out_only:
                 return sae_out
 
         return (
@@ -721,7 +727,7 @@ class GatedSparseAutoencoder(SparseAutoencoder):
         return sae_out
 
     def forward(self, x: torch.Tensor, *args, **kwargs):
-        
+
         sae_in, feature_acts = self.encode(x)
         sae_out = self.decode(feature_acts)
 
@@ -748,9 +754,10 @@ class GatedSparseAutoencoder(SparseAutoencoder):
         # Initialize ghost residual loss (not used for gated SAEs)
         mse_loss_ghost_resid = self.zero_loss
 
-
-        if hasattr(self.cfg, "return_out_only"): # to work with HookedSAEViT efficiently
-            if self.cfg.return_out_only:    
+        if hasattr(
+            self.cfg, "return_out_only"
+        ):  # to work with HookedSAEViT efficiently
+            if self.cfg.return_out_only:
                 return sae_out
 
         return (
@@ -794,7 +801,6 @@ class TopK(nn.Module):
         self.postact_fn = postact_fn
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-
 
         topk = torch.topk(x, k=self.k, dim=-1)
         values = self.postact_fn(topk.values)

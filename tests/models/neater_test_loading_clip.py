@@ -7,12 +7,9 @@ import open_clip
 from vit_prisma.models.model_loader import load_hooked_model
 
 
-
 # Define a list of models to test
 MODEL_LIST = [
-
     # MChecking
-    
     # # MODELS THAT FAIL CURRENTLY
     # # MODELS THAT FAIL CURRENTLY
     # "open-clip:timm/vit_medium_patch16_clip_224.tinyclip_yfcc15m",
@@ -39,16 +36,12 @@ MODEL_LIST = [
     # "open-clip:timm/vit_betwixt_patch32_clip_224.tinyclip_laion400m",
     # "open-clip:timm/vit_gigantic_patch14_clip_224.metaclip_2pt5b",
     # "open-clip:timm/vit_huge_patch14_clip_224.metaclip_2pt5b"
-    # "openai/clip-vit-base-patch32", # f16, f32 issues? 
-
+    # "openai/clip-vit-base-patch32", # f16, f32 issues?
     # MODELS THAT HAVE NOT BEEN TESTED
     "facebook/dino-vitb16",
     "facebook/dino-vitb8",
     "facebook/dino-vits16",
     "facebook/dino-vits8",
-
-
-
     # MODELS THAT PASS
     "wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M",
     "open-clip:laion/CLIP-ViT-B-16-CommonPool.L-s1B-b8K",
@@ -83,16 +76,11 @@ MODEL_LIST = [
     "open-clip:laion/CLIP-ViT-L-14-CommonPool.XL.clip-s13B-b90K",
     "open-clip:laion/CLIP-ViT-L-14-CommonPool.XL.laion-s13B-b90K",
     "open-clip:laion/CLIP-ViT-L-14-DataComp.XL-s13B-b90K",
-
     "open-clip:laion/CLIP-ViT-L-14-laion2B-s32B-b82K",
-
     "open-clip:timm/vit_large_patch14_clip_224.laion400m_e31",
     "open-clip:timm/vit_large_patch14_clip_224.laion400m_e32",
-
     "open-clip:laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-    "open-clip:laion/CLIP-ViT-bigG-14-laion2B-39B-b160k",  
-
-    
+    "open-clip:laion/CLIP-ViT-bigG-14-laion2B-39B-b160k",
 ]
 
 TOLERANCE = 1e-4
@@ -103,7 +91,9 @@ DEVICE = "cuda"
 def test_loading_clip(model_name):
     """Test that the outputs of the HookedViT model match the original model."""
     # Generate a random input image
-    input_image = generate_random_input(batch_size=5, channels=3, height=224, width=224, device=DEVICE)
+    input_image = generate_random_input(
+        batch_size=5, channels=3, height=224, width=224, device=DEVICE
+    )
 
     print(f"Testing model: {model_name}")
 
@@ -114,18 +104,19 @@ def test_loading_clip(model_name):
     else:
         test_hf_clip_model(model_name, input_image)
 
+
 def print_divergence_info(og_output, hooked_output, model_name):
     """Print detailed divergence information between outputs."""
     diff = torch.abs(hooked_output - og_output)
     max_diff = torch.max(diff).item()  # Convert to Python scalar
     mean_diff = torch.mean(diff).item()
     median_diff = torch.median(diff).item()
-    
+
     print(f"\nDivergence Analysis for {model_name}:")
     print(f"Max difference:     {max_diff:.8f}")
     print(f"Mean difference:    {mean_diff:.8f}")
     print(f"Median difference:  {median_diff:.8f}")
-    
+
     # Print location of max difference
     if max_diff > 0:
         max_loc = torch.where(diff == max_diff)
@@ -144,13 +135,12 @@ def generate_random_input(batch_size, channels, height, width, device):
 def test_open_clip_model(model_name, input_image):
     """Test models from the open-clip library."""
     # Convert open-clip model name to hf-hub format
-    og_model_name = "hf-hub:" + model_name[len("open-clip:"):]
-    
+    og_model_name = "hf-hub:" + model_name[len("open-clip:") :]
+
     # Load original model
     og_model, *_ = open_clip.create_model_and_transforms(og_model_name)
     og_model.to(DEVICE)
     og_model.eval()
-
 
     hooked_model = load_hooked_model(model_name)
     hooked_model.to(DEVICE)
@@ -171,28 +161,27 @@ def test_open_clip_model(model_name, input_image):
 
 
 def test_dino_model(model_name, input_image):
-    
+
     hf_model = ViTModel.from_pretrained(model_name)
     hf_model.to(DEVICE)
     dino_output = hf_model(input_image)
     cls_token = dino_output.last_hidden_state[:, 0]
     patches = dino_output.last_hidden_state[:, 1:]
     patches_pooled = patches.mean(dim=1)
-    dino_output = torch.cat((cls_token.unsqueeze(-1), patches_pooled.unsqueeze(-1)), dim=-1)
-
+    dino_output = torch.cat(
+        (cls_token.unsqueeze(-1), patches_pooled.unsqueeze(-1)), dim=-1
+    )
 
     hooked_model = load_hooked_model(model_name)
     hooked_model.to(DEVICE)
     hooked_output = hooked_model(input_image)
 
-
     print_divergence_info(dino_output, hooked_output, model_name)
-    
 
     # Ensure outputs are close
     assert torch.allclose(
         hooked_output, dino_output, atol=TOLERANCE
-    ), f"{model_name} output diverges! Max diff: {torch.max(torch.abs(hooked_output - hf_output))}"    
+    ), f"{model_name} output diverges! Max diff: {torch.max(torch.abs(hooked_output - dino_output))}"
 
 
 def test_hf_clip_model(model_name, input_image):
@@ -200,7 +189,7 @@ def test_hf_clip_model(model_name, input_image):
     # Load the full Hugging Face CLIP model
 
     hf_model = CLIPModel.from_pretrained(model_name)
-        
+
     hf_model.to(DEVICE)
     hf_model.eval()
 
@@ -218,7 +207,6 @@ def test_hf_clip_model(model_name, input_image):
     print("Hooked config:", hooked_model.cfg)
     print(0)
 
-
     # Print confirmation of HookedViT model
     print(f"Loaded HookedViT model for: {model_name}")
 
@@ -226,18 +214,16 @@ def test_hf_clip_model(model_name, input_image):
     with torch.no_grad():
         # Hugging Face CLIP vision model output
         hf_output = hf_model.get_image_features(input_image)
-    
 
         # HookedViT model output
         hooked_output = hooked_model(input_image)
 
     print_divergence_info(hf_output, hooked_output, model_name)
 
-
     # Ensure outputs are close
     assert torch.allclose(
         hooked_output, hf_output, atol=TOLERANCE
-    ), f"{model_name} output diverges! Max diff: {torch.max(torch.abs(hooked_output - hf_output))}"    
+    ), f"{model_name} output diverges! Max diff: {torch.max(torch.abs(hooked_output - hf_output))}"
 
 
 if __name__ == "__main__":
