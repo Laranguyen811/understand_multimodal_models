@@ -3,7 +3,7 @@ from vit_prisma.utils.load_model import load_model
 from vit_prisma.sae.config import VisionModelSAERunnerConfig
 from vit_prisma.sae.sae import StandardSparseAutoencoder, GatedSparseAutoencoder
 from vit_prisma.sae.training.activations_store import VisionActivationsStore, CacheVisionActivationStore
-from vit_prisma.transcoders.transcoder import Transcoder
+from vit_prisma.sae.transcoder import Transcoder
 
 import wandb
 
