@@ -1,2 +1,3 @@
 from .sae import StandardSparseAutoencoder, GatedSparseAutoencoder, SparseAutoencoder
 from .config import VisionModelSAERunnerConfig, CacheActivationsRunnerConfig
+from .train_sae import VisionSAETrainer

@@ -107,7 +107,7 @@ class SAERunnerModelConfig(BaseSAEConfig):
     vit_model_cfg: Optional[HookedViTConfig] = None
     model_path: Optional[str] = None
     hook_point_layer: int = 9
-    layer_subtype: str = "ln2.hook_normalized"
+    layer_subtype: str = "hook_resid_post"
     hook_point_head_index: Optional[int] = None
     context_size: int = 50
     use_cached_activations: bool = False
@@ -155,7 +155,7 @@ class SAERunnerTrainingConfig(BaseSAEConfig):
     _dtype: str = "float32"
     seed: int = 42
 
-    dataset_name: str = "imgnet"
+    dataset_name: str = "imagnet"
     dataset_path: str = "/network/scratch/s/sonia.joseph/datasets/kaggle_datasets"
     dataset_train_path: str = (
         "/network/scratch/s/sonia.joseph/datasets/kaggle_datasets/ILSVRC/Data/CLS-LOC/train"
