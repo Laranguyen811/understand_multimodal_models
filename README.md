@@ -54,7 +54,7 @@ Please open an issue or pull request with your ideas.
 This repository is licensed under the MIT License. See LICENSE for details.
 
 ## 🌱 Ethical Framing
-This work is guided by principles of public-good impact, transparency and multispecies justice. It aims to advance interpretability in AI systems while remaining accountable to broader ecological and social contexts.
+This work is guided by principles of public-good impact, transparency, sustainability and multispecies justice. It aims to advance interpretability in AI systems while remaining accountable to broader ecological and social contexts.
 
 ## 🙏 Acknowledgments
 Inspired by ongoing work in AI safety, interpretability, and collaborative inquiry. Built with gratitude for open-source communities and systems thinkers everywhere.
