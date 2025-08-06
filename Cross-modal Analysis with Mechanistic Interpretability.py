@@ -1,10 +1,11 @@
 # %%
+import google.protobuf
+print(google.protobuf.__version__)
 import sys
 
 import vit_prisma
 from vit_prisma.utils.data_utils.imagenet.imagenet_dict import IMAGENET_DICT
 from vit_prisma.utils import prisma_utils
-
 
 #from transformers import CLIPProcessor, CLIPModel
 
@@ -48,6 +49,8 @@ import os
 # Set the paths to COCO images and annotation files
 root = os.getenv('DATA_ROOT', '/train2017/train2017')
 annFile = os.getenv('ANN_FILE','/annotations_trainval2017/annotations/captions_train2017.json')
+
+
 # %%
 # Helper function (ignore)
 def plot_image(image):
@@ -148,6 +151,7 @@ from transformers import CLIPProcessor, CLIPModel
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 print(model)
+print("Hello World!")
 
 # %%
 # Collate function
