@@ -62,3 +62,26 @@ Inspired by ongoing work in AI safety, interpretability, and collaborative inqui
 This is an ongoing project — iterative, imperfect, and evolving. If you notice issues, have suggestions, or want to share reflections, please feel free to leave feedback via [issues](https://github.com/Laranguyen811/cross_modal_analysis_with_mechanistic_interpretability/issues) or pull requests. Your insights are welcome and appreciated.
 
 This project uses the [Prisma Framework](https://github.com/Prisma-Multimodal/ViT-Prisma),  originally developed by Sonia Joseph and contributors,  licensed under the [MIT License](https://github.com/Prisma-Multimodal/ViT-Prisma/blob/main/LICENSE). We gratefully acknowledge their work on mechanistic interpretability in multimodal models.
+
+## 🤖 AI-Assisted Collaboration
+
+This project has benefited from the use of AI assistants for programming, research, and linguistic enrichment.  
+We gratefully acknowledge the following:
+
+- **Microsoft Copilot**  
+  Supported legal scaffolding, modular templates, and emotionally intelligent phrasing.  
+  [https://copilot.microsoft.com](https://copilot.microsoft.com)
+
+- **Gemini (Google DeepMind)**  
+  Assisted with troubleshooting, code refactoring, and conceptual brainstorming.  
+  [https://deepmind.google](https://deepmind.google)
+
+- **Claude (Anthropic)**  
+  Contributed to ethical reasoning scaffolds, interpretability, and collaborative drafting.  
+  [https://www.anthropic.com](https://www.anthropic.com)
+
+These tools were used as collaborative assistants in both programming and research contexts.  
+The project author made all final decisions, edits and validations.  
+Attribution reflects usage transparency and ethical engagement with generative technologies.
+
+
