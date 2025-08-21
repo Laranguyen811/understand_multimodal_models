@@ -61,5 +61,4 @@ This work is guided by principles of public-good impact, transparency, sustainab
 Inspired by ongoing work in AI safety, interpretability, and collaborative inquiry. Built with gratitude for open-source communities and systems thinkers everywhere.
 This is an ongoing project — iterative, imperfect, and evolving. If you notice issues, have suggestions, or want to share reflections, please feel free to leave feedback via [issues](https://github.com/Laranguyen811/cross_modal_analysis_with_mechanistic_interpretability/issues) or pull requests. Your insights are welcome and appreciated.
 
-This project uses the [Prisma Framework](https://github.com/Prisma-Multimodal/ViT-Prisma),  originally developed by Sonia Joseph and contributors,  licensed under the [MIT License](https://github.com/Prisma-Multimodal/ViT-Prisma/blob/main/LICENSE).  
-We gratefully acknowledge their work on mechanistic interpretability in multimodal models.
+This project uses the [Prisma Framework](https://github.com/Prisma-Multimodal/ViT-Prisma),  originally developed by Sonia Joseph and contributors,  licensed under the [MIT License](https://github.com/Prisma-Multimodal/ViT-Prisma/blob/main/LICENSE). We gratefully acknowledge their work on mechanistic interpretability in multimodal models.
