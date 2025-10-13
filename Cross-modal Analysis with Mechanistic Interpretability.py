@@ -1,12 +1,10 @@
 # %%
-import google.protobuf
-print(google.protobuf.__version__)
 import sys
 
 import vit_prisma
 from vit_prisma.utils.data_utils.imagenet.imagenet_dict import IMAGENET_DICT
 from vit_prisma.utils import prisma_utils
-
+from vit_prisma.prisma_tools.activation_cache import ActivationCache
 #from transformers import CLIPProcessor, CLIPModel
 
 from vit_prisma.utils.data_utils.imagenet.imagenet_utils import imagenet_index_from_word
@@ -14,7 +12,7 @@ import numpy as np
 import torch as t
 from fancy_einsum import einsum
 from collections import defaultdict
-
+from vit_prisma.visualization.attention_visualisation_robust import plot_javascript, prepare_image
 import plotly.graph_objs as go
 import plotly.express as px
 
@@ -25,7 +23,7 @@ from torchvision import transforms
 import matplotlib.pyplot as plt
 
 from IPython.display import display, HTML
-from typing import Callable
+from typing import Callable, List, Union, Optional
 from jaxtyping import Float, Int
 from torch import Tensor
 from torchvision import datasets, transforms
@@ -42,17 +40,70 @@ from torch.utils.data import DataLoader
 import jax
 import torch.nn.functional as f
 from matplotlib.colors import ListedColormap
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
 # Set the default renderer for Plotly
 pio.renderers.default = "browser"  # or "vscode" or "notebook_connected"
 import seaborn as sns
 import os
+import tqdm
+import stat
+from transformers import CLIPProcessor, CLIPModel,CLIPConfig, AutoTokenizer
+from torchvision.transforms.functional import to_pil_image
+
+# %%
 # Set the paths to COCO images and annotation files
-root = os.getenv('DATA_ROOT', '/train2017/train2017')
-annFile = os.getenv('ANN_FILE','/annotations_trainval2017/annotations/captions_train2017.json')
+#root = os.getenv('DATA_ROOT', '/train2017/train2017')
+#annFile = os.getenv('ANN_FILE',"/annotations_trainval2017/annotations/captions_train2017.json")
+print("Working Directory:", os.getcwd())
+base_dir = os.getenv("directory","")
+print(f"Base directory: {base_dir}")
+train_path = os.path.join(base_dir, "train2017","train2017")
+ann_path = os.path.join(base_dir,"annotations_trainval2017","annotations","captions_train2017.json")
+ann_path = os.path.normpath(ann_path)  # Normalize the path to ensure it is correct
+print("Full annotation file path:", ann_path)
+
+# Check if train_path exists and is a directory
+print("Checking train path...")
+print("Exists:", os.path.exists(train_path))
+print("Is directory:", os.path.isdir(train_path))
+# Check read permissions
+print("Readable:", os.access(train_path, os.R_OK))
+
+
+# Check if ann_path exists and is a file
+print("Checking annotation file...")
+print("Exists:", os.path.exists(ann_path))
+print("Is file:", os.path.isfile(ann_path))
+
+# Check read permissions
+print("Readable:", os.access(ann_path, os.R_OK))
+
+
+
+# Check file mode and permissions
+try:
+    file_stat = os.stat(ann_path)
+    print("File mode:", oct(file_stat.st_mode))
+    print("Owner can read:", bool(file_stat.st_mode & stat.S_IRUSR))
+except Exception as e:
+    print("Error accessing file stats:", e)
+
+
+try:
+    train_stat = os.stat(train_path)
+    print("Train path mode:", oct(train_stat.st_mode))
+    print("Owner can read:", bool(train_stat.st_mode & stat.S_IRUSR))
+except Exception as e:
+    print("Error accessing train path stats:", e)
+
+
+
 
 
 # %%
 # Helper function (ignore)
+
 def plot_image(image):
   plt.figure()
   plt.axis('off')
@@ -115,6 +166,7 @@ def plot_logit_boxplot(average_logits, labels):
 
 
 # %%
+
 def plot_patched_component(patched_head, title=''):
   """
   Use for plotting Activation Patching.
@@ -147,14 +199,14 @@ def imshow(tensor, **kwargs):
 
 # %%
 # We'll use a text-image transformer. Loading the model
-from transformers import CLIPProcessor, CLIPModel
+
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 print(model)
-print("Hello World!")
 
 # %%
 # Collate function
+
 def coco_collate_fn(batch):
     images,captions = zip(*batch)  # Unzip the batch into images and captions
     images = t.stack(images, dim=0)  # Stack images into a single tensor
@@ -169,8 +221,8 @@ transform = transforms.Compose([
 
 # Load the COCO dataset
 coco_dataset = CocoCaptions(
-    root = root,
-    annFile = annFile,
+    root = train_path,
+    annFile = ann_path,
     transform = transform,
 )
 
@@ -205,8 +257,9 @@ print(f"Shape of captions: {len(captions)}")  # Should be the number of captions
 
 # %%
 # Loading the image
+
 device = "cuda" if t.cuda.is_available() else "cpu"
-model = model.to(device)
+model = model.to(device) # type: ignore
 
 # Use the batch of images and labels generated earlier
 # images: tensor of shape [batch_size, 3, 224, 224] 
@@ -215,7 +268,24 @@ model = model.to(device)
 
 # Comparing corresponding captions with the images
 first_captions = [cap_list[0] for cap_list in captions]  # Take the first caption for each image
-text_inputs = processor(text=first_captions, images=None, return_tensors="pt", padding=True).to(device) 
+
+def trimmed_captions(caption, tokenizer_name="openai/clip-vit-base-patch32", max_token=77):
+    """
+    Trim the caption to fit the model's max token length.
+    Args:
+        caption: The caption to be trimmed.
+        tokenizer_name: The name of the tokenizer to use.
+        max_token: The maximum number of tokens allowed.
+    Returns:
+        The trimmed caption.
+    """
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+    tokens = tokenizer(caption, return_tensors="pt", truncation=True, max_length=max_token)
+    return tokenizer.decode(tokens.input_ids[0], skip_special_tokens=True)
+# Trim the captions to fit the model's max token length
+trimmed = [trimmed_captions(c,tokenizer_name ="openai/clip-vit-base-patch32", max_token=77) for c in first_captions]  # Trim captions to fit the model's max token length]
+
+text_inputs = processor(text=trimmed, images=None, return_tensors="pt", padding=True).to(device) 
 image_inputs = processor(images=images, return_tensors="pt")
 image_inputs["pixel_values"] = image_inputs["pixel_values"].to(device)
 
@@ -243,6 +313,305 @@ fig.update_layout(
     yaxis_title='Logits'
 )
 fig.show()
+
+# %%
+# Caching all activations
+
+from vit_prisma.prisma_tools import activation_cache
+from vit_prisma.models.model_loader import load_hooked_model
+
+model_name = "open-clip:laion/CLIP-ViT-B-16-DataComp.L-s1B-b8K"
+clip_model = load_hooked_model(model_name)
+clip_model.to('cuda') # Move to cuda if available
+#clip_images = einops.rearrange(images, 'b c h w -> b h w c')
+clip_image_logits, clip_image_cache = clip_model.run_with_cache(
+    input = image_inputs["pixel_values"],
+    return_cache_object=True,
+    remove_batch_dim=True,  # Remove batch dimension for simplicity
+)
+print(type(clip_image_logits), type(clip_image_cache))
+print(f"CLIP Image cache:",clip_image_cache)
+# %%
+
+# Accessing attention patterns from the first layer
+attn_patterns_from_shorthand = clip_image_cache["pattern",0]
+attn_patterns_from_full_name = clip_image_cache["blocks.0.attn.hook_pattern"]
+print(f"Attention patterns from shorthand: {attn_patterns_from_shorthand.shape}")
+print(f"Attention patterns from full name: {attn_patterns_from_full_name.shape}")
+act_names = prisma_utils.get_act_name("pattern", 0)  # Get the names of the activations
+print(f"Activation names: {act_names}")
+# %%
+# Verifying that hook_q, hook_k and hook_pattern are related to each other 
+
+layer_0_pattern_from_cache = clip_image_cache["pattern",0]
+hook_q = clip_image_cache["q",0]  # Accessing the hook_q for the first layer
+hook_k = clip_image_cache["k",0]
+# Check the shapes of the hooks
+
+print(f"Shape of hook_q: {hook_q.shape}")
+
+print(f"Shape of hook_k: {hook_k.shape}")
+s,n,d = hook_q.shape
+device = hook_q.device
+attn_scores = einops.einsum(hook_q, hook_k, 's n h, t n h -> n s t')
+# Note: Since CLIP or any other ViT-based models use bidirectional self-attention, we do not apply causal masking (autoaggressive masking) because the model can see the entire sequence, not just the one that comes before.
+attn_scores = attn_scores/(d ** 0.5)  # Scale the attention scores
+layer_0_pattern_from_q_k = attn_scores.softmax(-1)  # Softmax over the last dimension to get the attention pattern
+print(f"Shape of layer 0 pattern from cache: {layer_0_pattern_from_cache.shape}")
+print(f"Shape of attention scores from q and k: {layer_0_pattern_from_q_k.shape}")
+t.testing.assert_close(layer_0_pattern_from_cache, layer_0_pattern_from_q_k)  # Check if they are numerically close to each other
+print("The attention patterns from cache and from q and k are numerically close to each other.")
+# %%
+def visualise_attention(
+       heads: Union[int,List[int]],
+        cache: ActivationCache,
+        cfg: clip_model.cfg,
+        title: str,
+        max_width: int,
+        batch_idx: int =0,
+        attention_type = "hook_pattern",
+
+) -> t.Tensor:
+    '''
+    Visualise attention patterns for a given set of heads.
+    Args:
+        heads: List of attention head indices or a single index.
+        cache (ActivationCache): Stores intermediate activations from hooked layers, indexed by hook name (string). For attention patterns, use keys like  to access full attention maps.
+        cfg (HookedViTConfig): Model config, used to compute layer/head indices.
+        title (str): Title for the visualisation (unused here).
+        max_width (int): Max width for visualisation (unused here).
+        batch_idx (int): Batch index to extract from attention cache.
+        attention_type (str): Type of attention to extract (default: "attn_scores")
+    Returns:
+        t.Tensor: A tensor of staced attention patterns for the heads [num_heads, dest, src]
+    '''
+    if isinstance(heads,int):
+        heads = [heads]
+    
+    # Create the plotting data
+    labels: List[str] = []
+    patterns: List[t.Tensor] = []
+    for head in heads:
+        # Set the label
+        layer = head // cfg.n_heads # Number of layer is equal to the floor division between head and the number of heads in cfg
+        head_idx = head % cfg.n_heads # Number of head index is equal to the remainder of the division between head and the number of heads in cfg
+        labels.append(f"Layer {layer} Head {head_idx}")
+        # Get the attention patterns for the head
+        hook_name = f"blocks.{layer}.attn.hook_pattern"
+        pattern = cache[hook_name][head_idx,:,:]
+        patterns.append(pattern)
+ 
+        # Combine the patterns into a single tensor
+    return t.stack(patterns, dim=0)  # [heads, dest, src]
+    
+
+def get_attn_across_datapoints(attn_head_idx, attn_type="attn_scores"):
+    '''
+    Obtain attention patterns across all datapoints for a given attention head.
+    Args:
+        list_of_attn_heads: List of attention head indices.
+        all_patterns: List of attention patterns for the heads.
+    Returns:
+        all_patterns: A tensor of attention patterns for the heads across all datapoints.
+    '''
+    list_of_attn_heads = [attn_head_idx]
+
+    all_patterns = []
+    for batch_idx in range(images.shape[0]):
+        patterns = visualise_attention(
+            list_of_attn_heads, clip_image_cache, clip_model.cfg, "Attention Patterns", 700, batch_idx, attention_type=attn_type),
+        all_patterns.extend(patterns) # Adding to the end of the list
+    all_patterns = t.stack(all_patterns, dim=0)  # [batch, heads, dest, src]
+    return all_patterns
+
+# Set global seeds
+def set_global_seeds(seed_value: int):
+    '''
+    Set global seeds for reproducibility.
+    Args:
+        seed_value: The seed value to set.
+    Returns:
+        None
+    '''
+    t.manual_seed(seed_value)
+    t.cuda.manual_seed(seed_value)
+    t.cuda.manual_seed_all(seed_value)  # For multi-GPU setups
+    np.random.seed(seed_value) # For NumPy operations
+    random.seed(seed_value)  # For Python's random module
+    t.backends.cudnn.benchmark = False  # Disable CuDNN benchmarking for reproducibility
+    t.backends.cudnn.deterministic = True  # Ensure deterministic behavior in CuDNN
+
+seed_value = 42  # Set your desired seed value
+set_global_seeds(seed_value)
+# Define a worker init function that sets the seed
+def worker_init_fn(worker_id):
+    '''
+    Worker init function for DataLoader.
+    Args:
+        worker_id: The ID of the worker.
+    Returns:
+        None
+    '''
+    worker_seed = t.initial_seed() % 2**32 # Ensuring that the worker seed is a valid 32-bit integer (within the range of a 32-bit unsigned integer (0 to 2^(32-1)))
+    np.random.seed(worker_seed)  # Set the seed for NumPy operations in the worker
+    random.seed(worker_seed)  # Set the seed for Python's random module in the worker
+
+
+# %%
+# Corner head: a special localised attention head that often focuses on the corners of the feature map or the input image
+
+#image_logits, image_cache = clip_model.run_with_cache(
+#    input = image_inputs["pixel_values"],
+#    return_cache_object=True,
+#    remove_batch_dim=False,
+#    names_filter=lambda name: 'hook_pattern' in name  # Add a filter to capture the full attention matrix
+
+#)
+#attn_head_idx = 1  # Index of the attention head to visualize
+#batch_idx = 0  # Index of the batch to visualize
+#full_patterns = image_cache['blocks.0.attn.hook_pattern']
+#corner_pattern = full_patterns[batch_idx, attn_head_idx, :, :]
+#print(f"Shape of full patterns: {full_patterns.shape}")  # Should be [batch, query tokens, key tokens]
+
+#print(f"Shape of corner pattern: {corner_pattern.shape}")  # Should be [query tokens, key tokens]
+#if hasattr(corner_pattern,'cpu'):
+#    patterns_np:np.ndarray = corner_pattern.cpu().numpy()
+#elif hasattr(corner_pattern,'numpy'):
+#    patterns_np:np.ndarray = corner_pattern.numpy()
+#else:
+#    patterns_np:np.ndarray = np.array(corner_pattern)
+#print(f"Shape of corner pattern: {corner_pattern.shape}")
+#print("Attention shape",patterns_np.shape)
+#print("Attention range:", patterns_np.min(),"to",patterns_np.max())
+#print(f"Shape of images", images.shape)
+#print(images)
+#image = images[batch_idx].cpu().numpy()
+#print(f"Shape of image: {image.shape}")  # Should be [3, 224, 224])
+#html_code = plot_javascript([patterns_np], image,cfg=clip_model.cfg, ATTN_SCALING=16, cls_token=False)
+#display(HTML(html_code))  # Display the HTML code in the notebook
+
+# %%
+
+# Corner head: a special localised attention head that often focuses on the corners of the feature map or the input image
+# Assuming clip_model and images are defined elsewhere in your script
+# and are correctly loaded.
+
+# Assuming clip_model and images are defined elsewhere in your script
+# and are correctly loaded.
+from IPython.display import display, HTML
+
+image_logits, image_cache = clip_model.run_with_cache(
+    input = image_inputs["pixel_values"],
+    return_cache_object=True,
+    remove_batch_dim=True,
+    names_filter=lambda name: 'hook_pattern' in name
+)
+
+attn_head_idx = 1
+batch_idx = 0
+cfg = clip_model.cfg  # Use the actual model config, not HookedViTConfig()
+print(f"Config Debug")
+print(f"CLIP model config patch size: {cfg.patch_size}")
+print(f"CLIP model config image size: {cfg.image_size}")
+print(f" Expected patches per side: {cfg.image_size // cfg.patch_size}")
+print(f"Expected total patches: {(cfg.image_size // cfg.patch_size) ** 2}")  
+print(f"Expected total tokens (with CLS): {(cfg.image_size // cfg.patch_size) ** 2 + 1}")
+# Get the full attention patterns [batch, heads, query_tokens, key_tokens]
+full_patterns = visualise_attention(attn_head_idx, image_cache,cfg, "Attention Scores", 700, attention_type="hook_pattern")
+
+print(f"Full patterns shape: {full_patterns.shape}")
+
+# Extract the specific head's attention matrix [query_tokens, key_tokens]
+# FIXED: Select both batch and head dimensions properly
+#if full_patterns.ndim == 4:  # [batch, heads, query, key]
+#    corner_pattern = full_patterns[batch_idx, attn_head_idx, :, :]
+#elif full_patterns.ndim == 3:  # [heads, query, key] - batch already removed
+#    corner_pattern = full_patterns[attn_head_idx, :, :]
+#elif full_patterns.ndim == 2:  # [query, key] - already the right shape
+#    corner_pattern = full_patterns
+#else:
+#    raise ValueError(f"Unexpected attention pattern shape: {full_patterns.shape}")
+patterns_np: np.ndarray = full_patterns[batch_idx].cpu().numpy()
+image_np: np.ndarray = images[batch_idx].cpu().numpy()
+print(f"Corner pattern shape after extraction: {patterns_np.shape}")
+
+# Verify we have the expected shape for CLIP ViT
+#expected_tokens = 197  # 196 patches + 1 CLS for CLIP ViT-B/32
+#if corner_pattern.shape[0] != expected_tokens or corner_pattern.shape[1] != expected_tokens:
+#    print(f"Warning: Expected {expected_tokens}x{expected_tokens} attention matrix, got {corner_pattern.shape}")
+
+# Convert to numpy
+#if hasattr(corner_pattern, 'cpu'):
+#    patterns_np: np.ndarray = corner_pattern.cpu().numpy()
+#elif hasattr(corner_pattern, 'numpy'):
+#    patterns_np: np.ndarray = corner_pattern.numpy()
+#else:
+#    patterns_np: np.ndarray = np.array(corner_pattern)
+
+print(f"Numpy array shape: {patterns_np.shape}")
+print(f"Attention value range: {patterns_np.min():.4f} to {patterns_np.max():.4f}")
+print(f"Attention first value:{patterns_np[0]}")
+print(f"Minimum attention data: {np.min(patterns_np)}")
+print(f"Maximum attention data:{np.max(patterns_np)}")
+# Generate HTML visualization
+html_code = plot_javascript(
+        [patterns_np],  # List containing the 2D attention matrix
+        [image_np],
+        cfg=cfg,  # Use the actual model config
+        list_of_names=[f"Attention Head {attn_head_idx}"],
+        ATTN_SCALING=2,
+        cls_token=True  # This should match your 197x197 matrix
+    )
+# Save the HTML file
+#output_path = 'attention_visualization.html'
+#try:
+#    with open(output_path, 'w', encoding='utf-8') as f:
+#        f.write(html_code)
+    
+#    abs_path = os.path.abspath(output_path)
+#    print(f"\n✅ HTML VISUALIZATION SAVED!")
+#    print(f"📁 File: {abs_path}")
+#    print(f"🌐 URL: file://{abs_path}")
+#    print(f"\nTo view:")
+#    print(f"1. Copy this path: {abs_path}")
+#    print(f"2. Paste into your browser address bar")
+#    print(f"3. Or double-click the file in file explorer")
+    
+#except Exception as e:
+#    print(f"❌ Error saving HTML file: {e}")
+
+# Optional: If you're in Jupyter notebook, you can also display inline
+#try:
+#    from IPython.display import HTML
+#    print(f"\n📖 Displaying in notebook...")
+#    HTML(html_code)  # This will show the visualization directly in Jupyter
+#except ImportError:
+#    print(f"\n💡 Not in Jupyter - open the saved HTML file to view visualization")
+
+# Debug: save HTML to file to check JavaScript errors
+#with open('debug_viz.html', 'w') as file:
+#    file.write(html_code)
+#print("HTML saved to debug_viz.html - open in browser to check for JavaScript errors")
+
+# %%
+output_path = "attention_visualisation.html"
+try: 
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html_code)
+    abs_path = os.path.abspath(output_path)
+    print(f"\n✅ HTML Visualisation Saved.")
+    print(f"📁 File: {abs_path}")
+    print(f"\nTo view:")
+    print(f"1. Find the file in your directory.")
+    print(f"2. Double-click to open in your web browser.")
+    print(f"3. Or copy this path and paste to your browser address bar: file://{abs_path}")
+except Exception as e:
+    print(f"❌ Error saving HTML file: {e}")
+
+# %%
+print(f"Model config: {clip_model.cfg}")
+print("HookedViTConfig:", cfg)
+
 
 # %%
 # Get the embeddings
@@ -374,11 +743,6 @@ print(f"Average similarity: {average_similarity}")
 if similarity_range < 0.1 and average_similarity < 0.8:
   print("Poor alignment")
 
-
-
-
-
-
 # %%
 # Cross-modal cosine similarity matrix (after projection)
 # Cosine similarity between projected text and image features
@@ -417,12 +781,11 @@ go.Figure(data=go.Heatmap(
     margin=dict(l=100, r=100, t=100, b=100)  # Adjust margins
  ).show()
 # %%
-# Accumulated residual
+# Class names for the images
+# Assuming the first caption corresponds to the first image in the batch
 for i,label_indx in enumerate(first_captions):
    class_name = first_captions[i]
    print(f" Image {i}: class name = {class_name}")
-
-
 
 
 # %%
@@ -690,169 +1053,15 @@ plot_embeddings(
     title="Normalised CLIP Image and Text Embeddings in 2D UMAP Space"
     
 )
-# %%
-# Caching all activations
-from vit_prisma.prisma_tools import activation_cache
-from vit_prisma.models.model_loader import load_hooked_model
-
-model_name = "open-clip:laion/CLIP-ViT-B-16-DataComp.L-s1B-b8K"
-clip_model = load_hooked_model(model_name)
-clip_model.to('cuda') # Move to cuda if available
-#clip_images = einops.rearrange(images, 'b c h w -> b h w c')
-clip_image_logits, clip_image_cache = clip_model.run_with_cache(
-    input = image_inputs["pixel_values"],
-    return_cache_object=True,
-    remove_batch_dim=True,  # Remove batch dimension for simplicity
-)
-print(type(clip_image_logits), type(clip_image_cache))
-# %%
-# Accessing attention patterns from the first layer
-attn_patterns_from_shorthand = clip_image_cache["pattern",0]
-attn_patterns_from_full_name = clip_image_cache["blocks.0.attn.hook_pattern"]
-print(f"Attention patterns from shorthand: {attn_patterns_from_shorthand.shape}")
-print(f"Attention patterns from full name: {attn_patterns_from_full_name.shape}")
-act_names = prisma_utils.get_act_name("pattern", 0)  # Get the names of the activations
-print(f"Activation names: {act_names}")
-# %%
-# Verifying that hook_q, hook_k and hook_pattern are related to each other 
-layer_0_pattern_from_cache = clip_image_cache["pattern",0]
-hook_q = clip_image_cache["q",0]  # Accessing the hook_q for the first layer
-hook_k = clip_image_cache["k",0]
-# Check the shapes of the hooks
-
-
-print(f"Shape of hook_q: {hook_q.shape}")
-
-print(f"Shape of hook_k: {hook_k.shape}")
-s,n,d = hook_q.shape
-device = hook_q.device
-attn_scores = einops.einsum(hook_q, hook_k, 's n h, t n h -> n s t')
-# Note: Since CLIP or any other ViT-based models use bidirectional self-attention, we do not apply causal masking (autoaggressive masking) because the model can see the entire sequence, not just the one that comes before.
-attn_scores = attn_scores/(d ** 0.5)  # Scale the attention scores
-layer_0_pattern_from_q_k = attn_scores.softmax(-1)  # Softmax over the last dimension to get the attention pattern
-print(f"Shape of layer 0 pattern from cache: {layer_0_pattern_from_cache.shape}")
-print(f"Shape of attention scores from q and k: {layer_0_pattern_from_q_k.shape}")
-t.testing.assert_close(layer_0_pattern_from_cache, layer_0_pattern_from_q_k)  # Check if they are numerically close to each other
-print("The attention patterns from cache and from q and k are numerically close to each other.")
-#%%
-def visualise_attention(
-        heads,
-        local_cache,
-        title,
-        max_width,
-        batch_idx,
-        attention_type="attn_scores",
-
-) -> str:
-    '''
-    Visualise attention patterns for a given set of heads.
-    Args:
-        heads: List of attention head indices or a single index.
-        label: List of labels for the heads.
-        patterns: List of attention patterns for the heads.
-    Returns:
-        patterns: A tensor of attention patterns for the heads.
-    '''
-    if isinstance(heads,int):
-        head = [heads]
-    # Create the plotting data
-    label: List[str] = []
-    patterns: List[Float[t.Tensor,"dest ps src_pos"]] = []
-    for head in heads:
-        # Set the label
-        layer = head // clip_model.cfg.n_heads
-        head_idx = head % clip_model.cfg.n_heads
-        label.append(f"Layer {layer} Head {head_idx}")
-        # Get the attention patterns for the head
-        patterns.append(local_cache[attention_type, layer][batch_idx,head_idx])
-    # Combine the patterns into a single tensor
-    patterns = t.stack(patterns, dim=0)  # [heads, dest, src]
-    return patterns
-
-def get_attn_across_datapoints(attn_head_idx, attn_type="attn_scores"):
-    '''
-    Obtain attention patterns across all datapoints for a given attention head.
-    Args:
-        list_of_attn_heads: List of attention head indices.
-        all_patterns: List of attention patterns for the heads.
-    Returns:
-        all_patterns: A tensor of attention patterns for the heads across all datapoints.
-    '''
-    list_of_attn_heads = [attn_head_idx]
-
-    all_patterns = []
-    for batch_idx in range(images.shape[0]):
-        patterns = visualise_attention(
-            list_of_attn_heads, clip_image_cache, "Attention Patterns", 700, batch_idx, attention_type=attn_type),
-        all_patterns.extend(patterns) # Adding to the end of the list
-    all_patterns = t.stack(all_patterns, dim=0)  # [batch, heads, dest, src]
-    return all_patterns
-
-# Set global seeds
-def set_global_seeds(seed_value: int):
-    '''
-    Set global seeds for reproducibility.
-    Args:
-        seed_value: The seed value to set.
-    Returns:
-        None
-    '''
-    t.manual_seed(seed_value)
-    t.cuda.manual_seed(seed_value)
-    t.cuda.manual_seed_all(seed_value)  # For multi-GPU setups
-    np.random.seed(seed_value) # For NumPy operations
-    random.seed(seed_value)  # For Python's random module
-    t.backends.cudnn.benchmark = False  # Disable CuDNN benchmarking for reproducibility
-    t.backends.cudnn.deterministic = True  # Ensure deterministic behavior in CuDNN
-
-seed_value = 42  # Set your desired seed value
-set_global_seeds(seed_value)
-# Define a worker init function that sets the seed
-def worker_init_fn(worker_id):
-    '''
-    Worker init function for DataLoader.
-    Args:
-        worker_id: The ID of the worker.
-    Returns:
-        None
-    '''
-    worker_seed = t.initial_seed() % 2**32 # Ensuring that the worker seed is a valid 32-bit integer (within the range of a 32-bit unsigned integer (0 to 2^(32-1)))
-    np.random.seed(worker_seed)  # Set the seed for NumPy operations in the worker
-    random.seed(worker_seed)  # Set the seed for Python's random module in the worker
 
 # %%
-from vit_prisma.visualization.visualize_attention import plot_attn_heads
-# Visualising all 12 heads 
-print(f"Shape of cache: {attn_patterns_from_shorthand.shape}")  # Should be [batch, heads, dest, src]
-all_attentions = []
-#BATCH_IDX = 0  # Index of the batch to visualize
-for layer_idx in range(clip_model.cfg.n_layers):
-    for head_idx in range(clip_model.cfg.n_heads):
-        attn = clip_image_cache["pattern",layer_idx][head_idx,:,:]  # Accessing the attention pattern for the specific layer and head. No need for batch index since there are no batches in the cache
-        print(f"Shape of attention for layer {layer_idx}, head {head_idx}: {attn.shape}")
-        all_attentions.append(attn)
-all_attentions = t.stack(all_attentions, dim=0)
-all_attentions = all_attentions.cpu().numpy()  # Move to CPU for visualization
-print(f"Shape of all attentions: {all_attentions.shape}")  # [heads, dest, src]
-plot_attn_heads(
-    total_activations=all_attentions,
-    n_heads=clip_model.cfg.n_heads,  # Number of attention heads
-    n_layers=clip_model.cfg.n_layers,  # Number of layers
-    global_min_max= True,  # Use global min-max scaling for all heads
-    img_shape=all_attentions.shape[-1],  # Assuming square attention maps
-    figsize=(15, 15),  # Set the figure size
-    global_normalize=False,
-    log_transform=True,
-)
+print(f"Hooked ConViT Congfig", HookedViTConfig())
+print(f"CLIP model config from clip_model", clip_model.cfg)
+print(f"CLIP model config from CLIPModel", CLIPConfig())
+print(f"Hooked ConViT Config's patch size: {HookedViTConfig().patch_size}")
+print(f"CLIP model config patch size: {clip_model.cfg.patch_size}")
+print(f"Hooked ConViT Config's image size: {HookedViTConfig().image_size}")
+print(f"CLIP model config image size: {clip_model.cfg.image_size}")
 
-# %%
-# Corner head
-# %%
-# Mean ablation
-#from vit_prisma.prisma_tools import hook_point
-#def head_mean_ablation_hook(
- #       z: Float[Tensor, "batch seq d_model"],
-#        y: Float[Tensor, "batch d_model"],
-#       hook:
-#)
+
 
