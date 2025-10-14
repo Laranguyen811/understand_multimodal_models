@@ -6,7 +6,7 @@ from vit_prisma.utils.data_utils.imagenet.imagenet_dict import IMAGENET_DICT
 from vit_prisma.utils import prisma_utils
 from vit_prisma.prisma_tools.activation_cache import ActivationCache
 #from transformers import CLIPProcessor, CLIPModel
-
+import einops
 from vit_prisma.utils.data_utils.imagenet.imagenet_utils import imagenet_index_from_word
 import numpy as np
 import torch as t
@@ -499,7 +499,10 @@ def worker_init_fn(worker_id):
 # Assuming clip_model and images are defined elsewhere in your script
 # and are correctly loaded.
 from IPython.display import display, HTML
-
+try:
+    t.cuda.empty_cache()
+except RuntimeError as e:
+    print(f"Error {e}")
 image_logits, image_cache = clip_model.run_with_cache(
     input = image_inputs["pixel_values"],
     return_cache_object=True,
@@ -517,10 +520,66 @@ print(f" Expected patches per side: {cfg.image_size // cfg.patch_size}")
 print(f"Expected total patches: {(cfg.image_size // cfg.patch_size) ** 2}")  
 print(f"Expected total tokens (with CLS): {(cfg.image_size // cfg.patch_size) ** 2 + 1}")
 # Get the full attention patterns [batch, heads, query_tokens, key_tokens]
-full_patterns = visualise_attention(attn_head_idx, image_cache,cfg, "Attention Scores", 700, attention_type="hook_pattern")
-
+full_patterns = visualise_attention(attn_head_idx, image_cache,cfg, "Attention Scores", 700,attention_type="hook_pattern")
+full_patterns = full_patterns.squeeze(0)
 print(f"Full patterns shape: {full_patterns.shape}")
 
+corner_patterns = full_patterns[1:, 1:]
+patterns_np: np.ndarray = corner_patterns.cpu().numpy()
+image_np: np.ndarray = images[batch_idx].cpu().numpy()
+print(f"Corner pattern shape after extraction: {patterns_np.shape}")
+html_code = plot_javascript(
+        [patterns_np],  # List containing the 2D attention matrix
+        [image_np],
+        cfg=cfg,  # Use the actual model config
+        list_of_names=[f"Corner Head: Attention Head {attn_head_idx}"],
+        ATTN_SCALING=2,
+        cls_token=True  # This should match your 197x197 matrix
+    )
+# Save the HTML file
+#output_path = 'attention_visualization.html'
+#try:
+#    with open(output_path, 'w', encoding='utf-8') as f:
+#        f.write(html_code)
+    
+#    abs_path = os.path.abspath(output_path)
+#    print(f"\n✅ HTML VISUALIZATION SAVED!")
+#    print(f"📁 File: {abs_path}")
+#    print(f"🌐 URL: file://{abs_path}")
+#    print(f"\nTo view:")
+#    print(f"1. Copy this path: {abs_path}")
+#    print(f"2. Paste into your browser address bar")
+#    print(f"3. Or double-click the file in file explorer")
+    
+#except Exception as e:
+#    print(f"❌ Error saving HTML file: {e}")
+
+# Optional: If you're in Jupyter notebook, you can also display inline
+#try:
+#    from IPython.display import HTML
+#    print(f"\n📖 Displaying in notebook...")
+#    HTML(html_code)  # This will show the visualization directly in Jupyter
+#except ImportError:
+#    print(f"\n💡 Not in Jupyter - open the saved HTML file to view visualization")
+
+# Debug: save HTML to file to check JavaScript errors
+#with open('debug_viz.html', 'w') as file:
+#    file.write(html_code)
+#print("HTML saved to debug_viz.html - open in browser to check for JavaScript errors")
+
+output_path = "attention_visualisation.html"
+try: 
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html_code)
+    abs_path = os.path.abspath(output_path)
+    print(f"\n✅ HTML Visualisation Saved.")
+    print(f"📁 File: {abs_path}")
+    print(f"\nTo view:")
+    print(f"1. Find the file in your directory.")
+    print(f"2. Double-click to open in your web browser.")
+    print(f"3. Or copy this path and paste to your browser address bar: file://{abs_path}")
+except Exception as e:
+    print(f"❌ Error saving HTML file: {e}")
 # Extract the specific head's attention matrix [query_tokens, key_tokens]
 # FIXED: Select both batch and head dimensions properly
 #if full_patterns.ndim == 4:  # [batch, heads, query, key]
@@ -531,10 +590,67 @@ print(f"Full patterns shape: {full_patterns.shape}")
 #    corner_pattern = full_patterns
 #else:
 #    raise ValueError(f"Unexpected attention pattern shape: {full_patterns.shape}")
-patterns_np: np.ndarray = full_patterns[batch_idx].cpu().numpy()
-image_np: np.ndarray = images[batch_idx].cpu().numpy()
-print(f"Corner pattern shape after extraction: {patterns_np.shape}")
 
+# %%
+from vit_prisma.visualization.visualize_attention_js import plot_javascript
+from IPython.display import display
+attn_head_idx = 1
+list_of_attn_heads = attn_head_idx
+all_patterns = get_attn_across_datapoints(attn_head_idx=attn_head_idx)
+all_patterns = all_patterns[0].squeeze(0).cpu().numpy()
+print(f"All patterns shape:{all_patterns.shape}")
+list_of_images = images[0]
+print(f"Length of list of images: {len(list_of_images)}")
+html_code_all = plot_javascript(
+    [all_patterns],
+    list_of_images=[list_of_images],
+    list_of_names=[f"Corner Head All Patterns: Attention Head {attn_head_idx}"],
+    ATTN_SCALING=8)
+display(HTML(html_code_all))
+
+
+# %%
+# Corner token indices
+try:
+    t.cuda.empty_cache()
+except RuntimeError as e:
+    print(f"Error {e}")
+full_image_logits, full_image_cache = clip_model.run_with_cache(
+    input = image_inputs["pixel_values"],
+    return_cache_object=True,
+    remove_batch_dim=False,
+    names_filter=lambda name: 'hook_pattern' in name
+)
+total_full_patterns = visualise_attention(attn_head_idx, image_cache,cfg, "Attention Scores", 700,attention_type="hook_pattern")
+print(f"Full patterns shape: {total_full_patterns.shape}")
+num_patch_side = 14
+top_left = 1 # First patch (skip CLASS at 0)
+top_right = num_patch_side # Last oatch in the first row
+bottom_left = (num_patch_side - 1) * num_patch_side + 1 # First patch in the last row
+bottom_right = num_patch_side * num_patch_side # Last patch in the last row
+
+print(f"Corner token indices:")
+print(f" Top-left: {top_left}")
+print(f"Top-right: {top_right}")
+print(f"Bottom-left:{bottom_left}")
+print(f"Bottom-right:{bottom_right}")
+corner_tokens = [top_left,top_right,bottom_left,bottom_right]
+full_corner_patterns = full_patterns[corner_tokens,:]
+print(f"Corner Patterns' shape: {corner_patterns.shape}")
+if hasattr(full_corner_patterns,'cpu'):
+    full_patterns_np = full_corner_patterns.cpu().numpy()
+else: full_patterns_np = np.array(full_corner_patterns)
+image_np: np.ndarray = images[batch_idx].cpu().numpy()
+print(f"Corner pattern shape after extraction: {full_patterns_np.shape}")
+
+patterns_list = []
+for i in range(4):
+    # Reshape to [1,197] then expand to [197, 197] by repeating
+    # This shpws the attention pattern as a row we can visualise
+    patterns_2d = patterns_np[i:i+1, :]
+    # Repeat the pattern to make it visible in the attention matrix
+    patterns_2d = einops.repeat(patterns_2d, 'r c -> r c repeat', repeat = 197)
+    patterns_list.append(patterns_2d)
 # Verify we have the expected shape for CLIP ViT
 #expected_tokens = 197  # 196 patches + 1 CLS for CLIP ViT-B/32
 #if corner_pattern.shape[0] != expected_tokens or corner_pattern.shape[1] != expected_tokens:
@@ -548,17 +664,22 @@ print(f"Corner pattern shape after extraction: {patterns_np.shape}")
 #else:
 #    patterns_np: np.ndarray = np.array(corner_pattern)
 
-print(f"Numpy array shape: {patterns_np.shape}")
-print(f"Attention value range: {patterns_np.min():.4f} to {patterns_np.max():.4f}")
-print(f"Attention first value:{patterns_np[0]}")
-print(f"Minimum attention data: {np.min(patterns_np)}")
-print(f"Maximum attention data:{np.max(patterns_np)}")
+print(f"Numpy array shape: {corner_patterns.shape}")
+print(f"Attention value range: {corner_patterns.min():.4f} to {corner_patterns.max():.4f}")
+print(f"Attention first value:{corner_patterns[0]}")
+print(f"Minimum attention data: {np.min(corner_patterns)}")
+print(f"Maximum attention data:{np.max(corner_patterns)}")
 # Generate HTML visualization
 html_code = plot_javascript(
-        [patterns_np],  # List containing the 2D attention matrix
-        [image_np],
+        patterns_list,  # List containing the 2D attention matrix
+        [image_np] * 4,
         cfg=cfg,  # Use the actual model config
-        list_of_names=[f"Attention Head {attn_head_idx}"],
+        list_of_names=[
+            f"Top-left Corner (Token {top_left})",
+            f"Top-right Corner (Token {top_right})",
+            f"Bottom-left Corner (Token {bottom_left})",
+            f"Bottom-right Corner (Token{bottom_right})"
+        ],
         ATTN_SCALING=2,
         cls_token=True  # This should match your 197x197 matrix
     )
@@ -609,8 +730,8 @@ except Exception as e:
     print(f"❌ Error saving HTML file: {e}")
 
 # %%
-print(f"Model config: {clip_model.cfg}")
-print("HookedViTConfig:", cfg)
+os.environ['CUDA_LAUNCH_BLOCKING'] ="1"
+
 
 
 # %%
