@@ -484,7 +484,7 @@ except RuntimeError as e:
 image_logits, image_cache = clip_model.run_with_cache(
     input = image_inputs["pixel_values"],
     return_cache_object=True,
-    remove_batch_dim=True,
+    remove_batch_dim=False,
     names_filter=lambda name: 'hook_pattern' in name
 )
 
@@ -498,7 +498,7 @@ print(f" Expected patches per side: {cfg.image_size // cfg.patch_size}")
 print(f"Expected total patches: {(cfg.image_size // cfg.patch_size) ** 2}")  
 print(f"Expected total tokens (with CLS): {(cfg.image_size // cfg.patch_size) ** 2 + 1}")
 # Get the full attention patterns [batch, heads, query_tokens, key_tokens]
-full_patterns = visualise_attention(attn_head_idx_1, image_cache,cfg, "Attention Scores", 700,attention_type="hook_pattern")
+full_patterns = visualise_attention(attn_head_idx_1, image_cache,cfg,batch_idx=batch_idx_1, "Attention Scores", 700,attention_type="hook_pattern")
 full_patterns = full_patterns.squeeze(0)
 print(f"Full patterns shape: {full_patterns.shape}")
 
@@ -538,7 +538,7 @@ print(f" Expected patches per side: {cfg.image_size // cfg.patch_size}")
 print(f"Expected total patches: {(cfg.image_size // cfg.patch_size) ** 2}")  
 print(f"Expected total tokens (with CLS): {(cfg.image_size // cfg.patch_size) ** 2 + 1}")
 # Get the full attention patterns [batch, heads, query_tokens, key_tokens]
-full_patterns = visualise_attention(attn_head_idx_2, image_cache,cfg, "Attention Scores", 700,attention_type="hook_pattern")
+full_patterns = visualise_attention(attn_head_idx_2, image_cache,cfg, "Attention Scores", 700,batch_idx=batch_idx_1, attention_type="hook_pattern")
 full_patterns = full_patterns.squeeze(0)
 print(f"Full patterns shape: {full_patterns.shape}")
 
