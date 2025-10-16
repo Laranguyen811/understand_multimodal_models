@@ -240,22 +240,6 @@ print(f"Shape of images tensor: {images.shape}")  # Should be [batch_size, 3, 22
 print(f"Shape of captions: {len(captions)}")  # Should be the number of captions in the batch
 
 
-# Get all images and captions from the dataset
-#images = []
-#captions = []
-#for img, cap in zip(coco_loader.dataset, coco_loader.dataset.captions):
-#    images.append(img)
-#    captions.append(cap)  # Assuming cap is a list of captions, we take the first one
-#images = t.stack(images)  # Stack the images into a single tensor
-#print(f"Number of total images:{len(images)}\n Shape of images tensor: {images.shape}")
-
-
-# %%
-#from vit_prisma.utils.data_utils.imagenet.imagenet_utils import imagenet_index_from_word
-#from vit_prisma.utils.data_utils.imagenet.imagenet_dict import IMAGENET_DICT
-#from vit_prisma.utils.prisma_utils import test_prompt
-
-
 # %%
 # Loading the image
 
@@ -518,7 +502,7 @@ full_patterns = visualise_attention(attn_head_idx_1, image_cache,cfg, "Attention
 full_patterns = full_patterns.squeeze(0)
 print(f"Full patterns shape: {full_patterns.shape}")
 
-corner_patterns = full_patterns[1:, 1:]
+corner_patterns = full_patterns
 patterns_np: np.ndarray = corner_patterns.cpu().numpy()
 image_np: np.ndarray = images[batch_idx_1].cpu().numpy()
 print(f"Corner pattern shape after extraction: {patterns_np.shape}")
@@ -554,19 +538,19 @@ print(f" Expected patches per side: {cfg.image_size // cfg.patch_size}")
 print(f"Expected total patches: {(cfg.image_size // cfg.patch_size) ** 2}")  
 print(f"Expected total tokens (with CLS): {(cfg.image_size // cfg.patch_size) ** 2 + 1}")
 # Get the full attention patterns [batch, heads, query_tokens, key_tokens]
-full_patterns = visualise_attention(attn_head_idx, image_cache,cfg, "Attention Scores", 700,attention_type="hook_pattern")
+full_patterns = visualise_attention(attn_head_idx_2, image_cache,cfg, "Attention Scores", 700,attention_type="hook_pattern")
 full_patterns = full_patterns.squeeze(0)
 print(f"Full patterns shape: {full_patterns.shape}")
 
 corner_patterns = full_patterns[1:, 1:]
 patterns_np: np.ndarray = corner_patterns.cpu().numpy()
-image_np: np.ndarray = images[batch_idx].cpu().numpy()
+image_np: np.ndarray = images[batch_idx_1].cpu().numpy()
 print(f"Corner pattern shape after extraction: {patterns_np.shape}")
 html_code = plot_javascript(
         [patterns_np],  # List containing the 2D attention matrix
         [image_np],
         cfg=cfg,  # Use the actual model config
-        list_of_names=[f"Corner Head: Attention Head {attn_head_idx}"],
+        list_of_names=[f"Corner Head: Attention Head {attn_head_idx_2}"],
         ATTN_SCALING=2  # This should match your 197x197 matrix
     )
 
