@@ -448,13 +448,13 @@ def worker_init_fn(worker_id):
 from vit_prisma.visualization.visualize_attention import plot_attn_heads
 print(f"Shape of cache: {attn_patterns_from_shorthand.shape}")  # Should be [batch, heads, dest, src]
 all_attentions = []
-#BATCH_IDX = 0  # Index of the batch to visualize
+
 for layer_idx in range(clip_model.cfg.n_layers):
     for head_idx in range(clip_model.cfg.n_heads):
         attn = clip_image_cache["pattern",layer_idx][head_idx,:,:]  # Accessing the attention pattern for the specific layer and head. No need for batch index since there are no batches in the cache
         print(f"Shape of attention for layer {layer_idx}, head {head_idx}: {attn.shape}")
         all_attentions.append(attn)
-all_attentions = t.stack(all_attentions, dim=0)
+all_attentions = t.stack(all_attentions, dim=0) # Stacking attention patterns vertically
 all_attentions = all_attentions.cpu().numpy()  # Move to CPU for visualization
 print(f"Shape of all attentions: {all_attentions.shape}")  # [heads, dest, src]
 plot_attn_heads(
@@ -476,6 +476,7 @@ plot_attn_heads(
 
 # Assuming clip_model and images are defined elsewhere in your script
 # and are correctly loaded.
+# Study corner head without CLS token
 from IPython.display import display, HTML
 try:
     t.cuda.empty_cache()
@@ -498,11 +499,11 @@ print(f" Expected patches per side: {cfg.image_size // cfg.patch_size}")
 print(f"Expected total patches: {(cfg.image_size // cfg.patch_size) ** 2}")  
 print(f"Expected total tokens (with CLS): {(cfg.image_size // cfg.patch_size) ** 2 + 1}")
 # Get the full attention patterns [batch, heads, query_tokens, key_tokens]
-full_patterns = visualise_attention(attn_head_idx_1, image_cache,cfg,batch_idx=batch_idx_1, "Attention Scores", 700,attention_type="hook_pattern")
-full_patterns = full_patterns.squeeze(0)
+full_patterns = visualise_attention(attn_head_idx_1, image_cache,cfg, "Attention Scores", 700,batch_idx=batch_idx_1,attention_type="hook_pattern")
+full_patterns = full_patterns[0][0].squeeze(0)
 print(f"Full patterns shape: {full_patterns.shape}")
 
-corner_patterns = full_patterns
+corner_patterns = full_patterns[1:,1:]
 patterns_np: np.ndarray = corner_patterns.cpu().numpy()
 image_np: np.ndarray = images[batch_idx_1].cpu().numpy()
 print(f"Corner pattern shape after extraction: {patterns_np.shape}")
@@ -529,6 +530,7 @@ except Exception as e:
     print(f"❌ Error saving HTML file: {e}")
 
 # %%
+# Study corner head with CLS token
 attn_head_idx_2 = 1
 cfg = clip_model.cfg  # Use the actual model config, not HookedViTConfig()
 print(f"Config Debug")
@@ -539,10 +541,10 @@ print(f"Expected total patches: {(cfg.image_size // cfg.patch_size) ** 2}")
 print(f"Expected total tokens (with CLS): {(cfg.image_size // cfg.patch_size) ** 2 + 1}")
 # Get the full attention patterns [batch, heads, query_tokens, key_tokens]
 full_patterns = visualise_attention(attn_head_idx_2, image_cache,cfg, "Attention Scores", 700,batch_idx=batch_idx_1, attention_type="hook_pattern")
-full_patterns = full_patterns.squeeze(0)
+full_patterns = full_patterns[0][0].squeeze(0)
 print(f"Full patterns shape: {full_patterns.shape}")
 
-corner_patterns = full_patterns[1:, 1:]
+corner_patterns = full_patterns # Corner patterns with CLS token
 patterns_np: np.ndarray = corner_patterns.cpu().numpy()
 image_np: np.ndarray = images[batch_idx_1].cpu().numpy()
 print(f"Corner pattern shape after extraction: {patterns_np.shape}")
@@ -568,6 +570,47 @@ try:
 except Exception as e:
     print(f"❌ Error saving HTML file: {e}")
 # %%
+# Study corner head with CLS token 
+attn_head_idx_2 = 1
+cfg = clip_model.cfg  # Use the actual model config, not HookedViTConfig()
+print(f"Config Debug")
+print(f"CLIP model config patch size: {cfg.patch_size}")
+print(f"CLIP model config image size: {cfg.image_size}")
+print(f" Expected patches per side: {cfg.image_size // cfg.patch_size}")
+print(f"Expected total patches: {(cfg.image_size // cfg.patch_size) ** 2}")  
+print(f"Expected total tokens (with CLS): {(cfg.image_size // cfg.patch_size) ** 2 + 1}")
+# Get the full attention patterns [batch, heads, query_tokens, key_tokens]
+full_patterns = visualise_attention(attn_head_idx_2, image_cache,cfg, "Attention Scores", 700,batch_idx=batch_idx_1, attention_type="hook_pattern")
+full_patterns = full_patterns.squeeze(0)
+print(f"Full patterns shape: {full_patterns.shape}")
+
+corner_patterns = full_patterns
+patterns_np: np.ndarray = corner_patterns.cpu().numpy()
+image_np: np.ndarray = images[batch_idx_1].cpu().numpy()
+print(f"Corner pattern shape after extraction: {patterns_np.shape}")
+html_code = plot_javascript(
+        [patterns_np],  # List containing the 2D attention matrix
+        [image_np],
+        cfg=cfg,  # Use the actual model config
+        list_of_names=[f"Corner Head: Attention Head {attn_head_idx_2}"],
+        ATTN_SCALING=2  # This should match your 197x197 matrix
+    )
+
+output_path = "attention_visualisation.html"
+try: 
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html_code)
+    abs_path = os.path.abspath(output_path)
+    print(f"\n✅ HTML Visualisation Saved.")
+    print(f"📁 File: {abs_path}")
+    print(f"\nTo view:")
+    print(f"1. Find the file in your directory.")
+    print(f"2. Double-click to open in your web browser.")
+    print(f"3. Or copy this path and paste to your browser address bar: file://{abs_path}")
+except Exception as e:
+    print(f"❌ Error saving HTML file: {e}")
+# %%
+
 cfg = clip_model.cfg
 attn_head_idx = 1
 list_of_attn_heads = attn_head_idx
