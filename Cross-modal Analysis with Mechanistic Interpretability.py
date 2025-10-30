@@ -301,7 +301,6 @@ fig.show()
 
 # %%
 # Caching all activations
-
 from vit_prisma.prisma_tools import activation_cache
 from vit_prisma.models.model_loader import load_hooked_model
 
@@ -471,11 +470,6 @@ plot_attn_heads(
 # %%
 
 # Corner head: a special localised attention head that often focuses on the corners of the feature map or the input image
-# Assuming clip_model and images are defined elsewhere in your script
-# and are correctly loaded.
-
-# Assuming clip_model and images are defined elsewhere in your script
-# and are correctly loaded.
 # Study corner head without CLS token
 from IPython.display import display, HTML
 try:
