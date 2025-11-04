@@ -311,6 +311,7 @@ print(f"Shape of attention scores from q and k: {layer_0_pattern_from_q_k.shape}
 t.testing.assert_close(layer_0_pattern_from_cache, layer_0_pattern_from_q_k)  # Check if they are numerically close to each other
 print("The attention patterns from cache and from q and k are numerically close to each other.")
 # %%
+
 def extract_suffixes(cache_keys: List[str]) -> Dict[str, str]:
     '''
     Take a list of full hook names and returns a dictionary
@@ -325,6 +326,7 @@ def extract_suffixes(cache_keys: List[str]) -> Dict[str, str]:
             suffix = full_hook_name
         suffixes[full_hook_name] = suffix
     return suffixes
+
 def visualise_attention(
        heads: Union[int,List[int]],
         cache: ActivationCache,
@@ -339,7 +341,7 @@ def visualise_attention(
     Visualise attention patterns for a given set of heads.
     Args:
         heads: List of attention head indices or a single index.
-        cache (ActivationCache): Stores intermediate activations from hooked layers, indexed by hook name (string). For attention patterns, use keys like  to access full attention maps.
+        cache (ActivationCache): Stores intermediate activations from hooked layers, indexed by hook name (string). For attention patterns, use keys like to access full attention maps.
         cfg (clip_model.cfg): Model config, used to compute layer/head indices.
         title (str): Title for the visualisation (unused here).
         max_width (int): Max width for visualisation (unused here).
@@ -367,14 +369,19 @@ def visualise_attention(
         
         patterns: List[t.Tensor] = []
         hook_name = f"blocks.{layer}.attn.{hook_suffix}"
-        pattern = cache[hook_name][head_idx,:,:]
-        patterns.append(pattern)
+        if len(cache[hook_name].shape) <= 3: # Check whether the cache has no batch dimension
+            pattern = cache[hook_name][head_idx,:,:]
+            patterns.append(pattern)
+
+        elif len(cache[hook_name].shape) >= 4: # Check whether the cache has a batch dimension
+            pattern = cache[hook_name][batch_idx,head_idx,:,:]
+            patterns.append(pattern)
  
         # Combine the patterns into a single tensor
     return t.stack(patterns, dim=0)  # [heads, dest, src]
     
 
-def get_attn_across_datapoints(attn_head_idx, attn_type: str ="scores"):
+def get_attn_across_datapoints(attn_head_idx, attn_type: str ="scores", batch_idx: int = 0):
     '''
     Obtain attention patterns across all datapoints for a given attention head.
     Args:
@@ -387,8 +394,7 @@ def get_attn_across_datapoints(attn_head_idx, attn_type: str ="scores"):
 
     all_patterns = []
     for batch_idx in range(images.shape[0]):
-        patterns = visualise_attention(
-            list_of_attn_heads, clip_image_cache, clip_model.cfg, "Attention Patterns", 700, batch_idx, attention_type=attn_type),
+        patterns = visualise_attention(list_of_attn_heads, clip_image_cache, clip_model.cfg, "Attention Patterns", 700, attention_type=attn_type)
         all_patterns.extend(patterns) # Adding to the end of the list
     all_patterns = t.stack(all_patterns, dim=0)  # [batch, heads, dest, src]
     return all_patterns
@@ -468,7 +474,7 @@ image_logits, image_cache = clip_model.run_with_cache(
 # Corner head: a special localised attention head that often focuses on the corners of the feature map or the input image
 # Study corner head without CLS token
 # Need to slice CLS token out from the attention patterns since its inclusion does not provide accurate positional visualisation
-attn_head_idx_1 = 1
+attn_head_idx_1 = 8
 batch_idx_1 = 0
 cfg = clip_model.cfg  # Use the actual model config, not HookedViTConfig()
 print(f"Config Debug")
@@ -479,7 +485,8 @@ print(f"Expected total patches: {(cfg.image_size // cfg.patch_size) ** 2}")
 print(f"Expected total tokens (with CLS): {(cfg.image_size // cfg.patch_size) ** 2 + 1}")
 # Get the full attention patterns [batch, heads, query_tokens, key_tokens]
 full_patterns = visualise_attention(attn_head_idx_1, image_cache,cfg, "Attention Scores", 700,batch_idx=batch_idx_1,attention_type="hook_pattern")
-full_patterns = full_patterns[0][0].squeeze(0)
+print(f"Full patterns before squeezing: {full_patterns.shape}")
+full_patterns = full_patterns[0].squeeze(0)
 print(f"Full patterns shape: {full_patterns.shape}")
 
 corner_patterns = full_patterns[1:,1:]
@@ -513,9 +520,10 @@ except Exception as e:
 
 # Study corner head across all data points (pre-softmax)
 cfg = clip_model.cfg
-attn_head_idx = 1
+attn_head_idx = 8
 list_of_attn_heads = attn_head_idx
-pre_all_patterns = get_attn_across_datapoints(attn_head_idx=attn_head_idx, attn_type="attn_scores")
+pre_all_patterns = get_attn_across_datapoints(attn_head_idx=attn_head_idx, batch_idx = batch_idx_1, attn_type="attn_scores")
+print(f"Pre all patterns shape before squeezing: {pre_all_patterns.shape}")
 pre_all_patterns = pre_all_patterns[0].squeeze(0)[1:,1:].cpu().numpy()
 print(f"All patterns shape:{pre_all_patterns.shape}")
 print(f"First 5 rows of pre_all_patterns:\n {pre_all_patterns[:5,:5]}")
@@ -545,9 +553,10 @@ except Exception as e:
 # %%
 # Study attention patterns of corner head across all data points (post-softmax)
 cfg = clip_model.cfg
-attn_head_idx = 1
+attn_head_idx = 8
 list_of_attn_heads = attn_head_idx
 post_all_patterns = get_attn_across_datapoints(attn_head_idx=attn_head_idx, attn_type="pattern")
+print(f"Post all patterns shape before squeezing: {post_all_patterns.shape}")
 post_all_patterns = post_all_patterns[0].squeeze(0)[1:,1:].cpu().numpy()
 print(f"All patterns shape:{post_all_patterns.shape}")
 print(f"First 5 rows of post_all_patterns:\n {post_all_patterns[:5,:5]}")
@@ -575,6 +584,7 @@ except Exception as e:
     print(f"❌ Error saving HTML file: {e}")
 
 # %%
+# Study Modulus head across all data points without CLS token (pre-softmax)
 attn_head_idx = 69 # The index of the "pure" Modulus head is calculated as (layer_index * n_heads) + head_index = (5 * 12) + 9 = 69
 modulus_pre_all_patterns = get_attn_across_datapoints(attn_head_idx=attn_head_idx, attn_type="attn_scores")
 print(f"Modulus all patterns before squeezing: {modulus_pre_all_patterns.shape}")
@@ -586,7 +596,7 @@ html_code_modulus_pre = plot_javascript(
     [modulus_pre_all_patterns],
     list_of_images=list_of_images,
     cfg=cfg,
-    list_of_names=[f"All Patterns Modulus head: Attention Head {attn_head_idx}"],
+    list_of_names=[f"All Patterns Modulus head Pre-softmax: Attention Head {attn_head_idx}"],
     ATTN_SCALING=8)
 output_path_modulus_pre = "attention_visualisation_modulus_pre.html"
 try:
@@ -602,7 +612,7 @@ try:
 except Exception as e:
     print(f"❌ Error saving HTML file: {e}")
 # %%
-# Study Modulus Head with CLS token
+# Study Modulus Head across all data points without CLS token (post-softmax)
 
 attn_head_idx = 69 # The index of the "pure" Modulus head is calculated as (layer_index * n_heads) + head_index = (5 * 12) + 9 = 69
 modulus_post_all_patterns = get_attn_across_datapoints(attn_head_idx=attn_head_idx, attn_type="pattern")
@@ -615,7 +625,7 @@ html_code_modulus_post = plot_javascript(
     [modulus_post_all_patterns],
     list_of_images=list_of_images,
     cfg=cfg,
-    list_of_names=[f"All Patterns Modulus head: Attention Head {attn_head_idx}"],
+    list_of_names=[f"All Patterns Modulus head Post-softmax: Attention Head {attn_head_idx}"],
     ATTN_SCALING=8)
 output_path_modulus_post = "attention_visualisation_modulus.html"
 try:
@@ -632,13 +642,62 @@ except Exception as e:
     print(f"❌ Error saving HTML file: {e}")
 
 # %%
-# Modulus head without CLS token
-
+# Study Edge head without CLS token (pre-softmax)
+attn_head_idx = 10
+edge_pre_all_patterns = get_attn_across_datapoints(attn_head_idx=attn_head_idx, attn_type="attn_scores")
+edge_pre_all_patterns = edge_pre_all_patterns[0].squeeze(0)[1:,1:].cpu().numpy()
+print(f"All patterns shape:{edge_pre_all_patterns.shape}")
+print(f"First 5 rows of edge_all_patterns_pre:\n {edge_pre_all_patterns[:5,:5]}")
+list_of_images = images[0]
+html_code_edge_pre = plot_javascript(
+    [edge_pre_all_patterns],
+    list_of_images=list_of_images,
+    cfg=cfg,
+    list_of_names=[f"All Patterns Edge head Pre-softmax: Attention Head {attn_head_idx}"],
+    ATTN_SCALING=8)
+output_path_edge_pre = "attention_visualisation_edge_pre.html"
+try:
+    with open(output_path_edge_pre, 'w', encoding='utf-8') as f:
+        f.write(html_code_edge_pre)
+    abs_path = os.path.abspath(output_path_edge_pre)
+    print(f"\n✅ HTML Visualisation Saved.")
+    print(f"📁 File: {abs_path}")
+    print(f"\nTo view:")
+    print(f"1. Find the file in your directory.")
+    print(f"2. Double-click to open in your web browser.")
+    print(f"3. Or copy this path and paste to your browser address bar: file://{abs_path}")
+except Exception as e:
+    print(f"❌ Error saving HTML file: {e}")
 
 
 # %%
 
-
+# Study Edge head without CLS token (post-softmax)
+attn_head_idx = 10
+edge_post_all_patterns = get_attn_across_datapoints(attn_head_idx=attn_head_idx, attn_type="hook_pattern")
+edge_post_all_patterns = edge_post_all_patterns[0].squeeze(0)[1:,1:].cpu().numpy()
+print(f"All patterns shape:{edge_post_all_patterns.shape}")
+print(f"First 5 rows of edge_all_patterns_pre:\n {edge_post_all_patterns[:5,:5]}")
+list_of_images = images[0]
+html_code_edge_post = plot_javascript(
+    [edge_post_all_patterns],
+    list_of_images=list_of_images,
+    cfg=cfg,
+    list_of_names=[f"All Patterns Edge head Pre-softmax: Attention Head {attn_head_idx}"],
+    ATTN_SCALING=8)
+output_path_edge_post = "attention_visualisation_edge_pre.html"
+try:
+    with open(output_path_edge_post, 'w', encoding='utf-8') as f:
+        f.write(html_code_edge_post)
+    abs_path = os.path.abspath(output_path_edge_post)
+    print(f"\n✅ HTML Visualisation Saved.")
+    print(f"📁 File: {abs_path}")
+    print(f"\nTo view:")
+    print(f"1. Find the file in your directory.")
+    print(f"2. Double-click to open in your web browser.")
+    print(f"3. Or copy this path and paste to your browser address bar: file://{abs_path}")
+except Exception as e:
+    print(f"❌ Error saving HTML file: {e}")
 
 
 # %%
@@ -1083,7 +1142,7 @@ plot_embeddings(
 )
 
 
-
-
+# %%
+print("Number of attention heads in the model:", clip_model.cfg.n_heads)
 
 
