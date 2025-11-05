@@ -7,7 +7,6 @@ from vit_prisma.utils import prisma_utils
 from vit_prisma.prisma_tools.activation_cache import ActivationCache
 #from transformers import CLIPProcessor, CLIPModel
 import einops
-from vit_prisma.utils.data_utils.imagenet.imagenet_utils import imagenet_index_from_word
 import numpy as np
 import torch as t
 from fancy_einsum import einsum
@@ -683,7 +682,7 @@ html_code_edge_post = plot_javascript(
     [edge_post_all_patterns],
     list_of_images=list_of_images,
     cfg=cfg,
-    list_of_names=[f"All Patterns Edge head Pre-softmax: Attention Head {attn_head_idx}"],
+    list_of_names=[f"All Patterns Edge head Post-softmax: Attention Head {attn_head_idx}"],
     ATTN_SCALING=8)
 output_path_edge_post = "attention_visualisation_edge_pre.html"
 try:
