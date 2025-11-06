@@ -1,0 +1,253 @@
+---
+# CLIP Benchmark Task Configuration for ViT-Prisma
+# Based on datacomp tasklist.yml but only keeping the wds and retrieval tasks
+
+# Core Vision Tasks
+
+# ImageNet variants
+imagenet1k:
+  name: ImageNet 1k
+  size: 50000
+  main_metric: acc1
+  num_classes: 1000
+  tags: []
+
+imagenetv2:
+  name: ImageNet v2
+  size: 10000
+  main_metric: acc1
+  num_classes: 1000
+  tags: []
+
+imagenet_sketch:
+  name: ImageNet Sketch
+  size: 50889
+  main_metric: acc1
+  num_classes: 1000
+  tags: []
+
+imagenet-a:
+  name: ImageNet-A
+  size: 7500
+  main_metric: acc1
+  num_classes: 200
+  tags: []
+
+imagenet-r:
+  name: ImageNet-R
+  size: 30000
+  main_metric: acc1
+  num_classes: 200
+  tags: []
+
+imagenet-o:
+  name: ImageNet-O
+  size: 2000
+  main_metric: acc1
+  num_classes: 200
+  tags: []
+
+# CIFAR datasets
+cifar10:
+  name: CIFAR-10
+  size: 10000
+  main_metric: acc1
+  num_classes: 10
+  tags: []
+
+vtab/cifar100:
+  name: CIFAR-100
+  size: 10000
+  main_metric: acc1
+  num_classes: 100
+  tags:
+    - vtab_natural
+
+# Fine-grained classification
+vtab/caltech101:
+  name: Caltech-101
+  size: 6085
+  main_metric: mean_per_class_recall
+  num_classes: 102
+  tags:
+    - vtab_natural
+
+fgvc_aircraft:
+  name: FGVC Aircraft
+  size: 3333
+  main_metric: mean_per_class_recall
+  num_classes: 100
+  tags: []
+
+cars:
+  name: Stanford Cars
+  size: 8041
+  main_metric: acc1
+  num_classes: 196
+  tags: []
+
+food101:
+  name: Food-101
+  size: 25250
+  main_metric: acc1
+  num_classes: 101
+  tags: []
+
+vtab/flowers:
+  name: Oxford Flowers-102
+  size: 6149
+  main_metric: mean_per_class_recall
+  num_classes: 102
+  tags:
+    - vtab_natural
+
+vtab/pets:
+  name: Oxford-IIIT Pet
+  size: 3669
+  main_metric: mean_per_class_recall
+  num_classes: 37
+  tags:
+    - vtab_natural
+
+# Texture and scene recognition
+vtab/dtd:
+  name: Describable Textures
+  size: 1880
+  main_metric: acc1
+  num_classes: 47
+  tags:
+    - vtab_natural
+
+sun397:
+  name: SUN397
+  size: 108754
+  main_metric: acc1
+  num_classes: 397
+  tags:
+    - vtab_natural
+
+# Specialized domains
+vtab/eurosat:
+  name: EuroSAT
+  size: 5400
+  main_metric: acc1
+  num_classes: 10
+  tags:
+    - vtab_specialized
+
+vtab/resisc45:
+  name: RESISC45
+  size: 6300
+  main_metric: acc1
+  num_classes: 45
+  tags:
+    - vtab_specialized
+
+vtab/pcam:
+  name: PatchCamelyon
+  size: 32768
+  main_metric: acc1
+  num_classes: 2
+  tags:
+    - vtab_specialized
+
+# Geographic and cultural
+country211:
+  name: Country211
+  size: 21100
+  main_metric: acc1
+  num_classes: 211
+  tags: []
+
+# Other datasets
+mnist:
+  name: MNIST
+  size: 10000
+  main_metric: acc1
+  num_classes: 10
+  tags: []
+
+stl10:
+  name: STL-10
+  size: 8000
+  main_metric: acc1
+  num_classes: 10
+  tags: []
+
+vtab/svhn:
+  name: SVHN
+  size: 26032
+  main_metric: acc1
+  num_classes: 10
+  tags:
+    - vtab_natural
+
+gtsrb:
+  name: GTSRB
+  size: 12630
+  main_metric: acc1
+  num_classes: 43
+  tags: []
+
+objectnet:
+  name: ObjectNet
+  size: 18574
+  main_metric: acc1
+  num_classes: 113
+  tags: []
+
+voc2007:
+  name: Pascal VOC 2007
+  size: 14976
+  main_metric: acc1
+  num_classes: 20
+  tags: []
+
+renderedsst2:
+  name: Rendered SST2
+  size: 1821
+  main_metric: acc1
+  num_classes: 2
+  tags: []
+
+# Structured reasoning tasks
+vtab/clevr_count_all:
+  name: CLEVR Counts
+  size: 15000
+  main_metric: acc1
+  num_classes: 8
+  tags:
+    - vtab_structured
+
+vtab/clevr_closest_object_distance:
+  name: CLEVR Distance
+  size: 15000
+  main_metric: acc1
+  num_classes: 6
+  tags:
+    - vtab_structured
+
+vtab/kitti_closest_vehicle_distance:
+  name: KITTI Vehicle Distance
+  size: 711
+  main_metric: acc1
+  num_classes: 4
+  tags:
+    - vtab_structured
+
+# Retrieval tasks (if supported)
+retrieval/flickr_1k_test_image_text_retrieval:
+  name: Flickr
+  size: 1000
+  main_metric: mean_recall@1
+  tags:
+    - retrieval
+
+retrieval/mscoco_2014_5k_test_image_text_retrieval:
+  name: MSCOCO
+  size: 5000
+  main_metric: mean_recall@1
+  tags:
+    - retrieval
+
+...

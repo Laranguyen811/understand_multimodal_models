@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+</head>
+<body>
+
+    <div style="display: flex; justify-content: left; align-items: left;">
+        <label for="attnHeadSelector">Select Attention Head:</label>
+        <select id="attnHeadSelector"> </select>
+    </div>
+    <div style="display: flex;">
+
+        <canvas id="{{ canvas_attn_id }}"></canvas>
+        <canvas id="{{ canvas_img_id }}"></canvas>
+    </div>
+
+    <script>
+        var CANVAS_ATTN_ID = "{{ canvas_attn_id }}";
+        var CANVAS_IMG_ID = "{{ canvas_img_id }}";
+        var ATTN_HEAD_SELECTOR_ID = "attnHeadSelector";
+        var NAMES_JSON = '{{ names_json }}';
+        var IMAGE_SIZES_JSON = "{{ image_sizes_json  }}";
+        var PATCHES_JSON = "{{ patches_json }}";
+        var ATTN_HEAD_JSON = "{{ attn_heads_json }}";
+        var ATTN_SCALING = {{ ATTN_SCALING }};
+        var CLS_TOKEN = {{ "true" if cls_token else "false" }};
+    </script>
+    <script>{{get_color_js}}</script>
+    <script>{{patch_to_img_js}}</script>
+    <script>{{main_visualize_js}}</script>
+</body>
+</html>
