@@ -28,7 +28,7 @@ from transformers import CLIPProcessor, CLIPModel,CLIPConfig, AutoTokenizer
 from torchvision.datasets import CocoCaptions
 from torchvision import transforms
 from vit_prisma.utils.prisma_utils import test_prompt
-from vit_prisma.dataloaders.visual_genome import VisualGenomeDataset, transform, instantiate_dataloader, iterate_dataloader
+from vit_prisma.dataloaders.visual_genome import set_up_vg_paths, transform, instantiate_dataloader, iterate_dataloader, load_images, load_dataset
 
 # %%
 # Loading the model 
@@ -37,7 +37,14 @@ processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
 # %%
 # Verify that the model can do the task
-visual_genome_dataset, visual_genome_loader = instantiate_dataloader()
+#visual_genome_dataset, visual_genome_loader = instantiate_dataloader()
+loaded_images = load_images(train_path=set_up_vg_paths(verbose=True),batch_size=8)
+#inputs = processor(image=loaded_images,return_tensors='pt', padding = True)
+# Get embeddings
+#with t.no_grad:
+#    image_features = clip_model.get_image_features(**inputs)
+#print(f"First image:{(loaded_images)}")
+test_prompt(inputs,clip_model)
 
 
 
