@@ -23,10 +23,22 @@ from vit_prisma.models.layers.layer_norm import LayerNorm
 from vit_prisma.models.layers.patch_embedding import PatchEmbedding
 from vit_prisma.models.layers.position_embedding import PosEmbedding
 from vit_prisma.prisma_tools.hook_point import HookPoint
+from vit_prisma.models.model_loader import load_hooked_model
 from transformers import CLIPProcessor, CLIPModel,CLIPConfig, AutoTokenizer
+from torchvision.datasets import CocoCaptions
+from torchvision import transforms
+from vit_prisma.utils.prisma_utils import test_prompt
+from vit_prisma.dataloaders.visual_genome import VisualGenomeDataset, transform, instantiate_dataloader, iterate_dataloader
 
 # %%
-# Model and Task Setup
-model_name = "open-clip:laion/CLIP-ViT-B-16-DataComp.L-s1B-b8K"
-clip_model = load_hooked_model(model_name)
+# Loading the model 
+clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+
+# %%
+# Verify that the model can do the task
+visual_genome_dataset, visual_genome_loader = instantiate_dataloader()
+
+
+
 
