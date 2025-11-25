@@ -62,7 +62,7 @@ text_vision_outputs = processor(text=text,images=loaded_images[0],return_tensors
 rel_data = create_rel_data(rel_base_dir=rel_base_dir)
 
 holding_cases = get_relationships_by_predicate(image_id=1,relationships_data=rel_data, predicate='holding')
-print(f"First holding case: {holding_cases}")
+print(f"Holding case: {holding_cases}")
 # %%
 
 # Build IOI test
@@ -102,7 +102,7 @@ print(f"IOI Test Text Prompts: {text}")
 
 
 # %%
-ioi_inputs = processor(text=text, images=loaded_images,return_tensors='pt')
+ioi_inputs = processor(text=text, images=loaded_images,return_tensors='pt',padding=True)
 print(f"Input type: {type(inputs)}")
 
 with t.no_grad():
@@ -114,7 +114,13 @@ with t.no_grad():
     outputs = clip_model(**ioi_inputs)
     # Logits
     logits = outputs.logits_per_image[0]
+
+    # Probabilities
+    probs = logits.softmax(dim=-1)
 print(f"Logit values: {logits}")
+print (f"Probabilities: {probs}")
+print(f"Correct IOI probability: {np.round(probs[ioi_test_case['correct_idx']].item(),3)}")
+print(f"Distractor IOI probability: {np.round(probs[ioi_test_case['distractor_idx']].item(),3)}")
 def logits_to_ave_logit_diff(
         logits: Tensor,
         per_prompt: Bool = False,
@@ -127,10 +133,11 @@ def logits_to_ave_logit_diff(
     Returns:
         Average logit difference tensor of shape (batch,).
     '''
+    # Calculate the logit difference between correct and distractor
     logits_diff = logits[:, ioi_test_case['correct_idx']] - logits[:, ioi_test_case['distractor_idx']]
-    if per_prompt:
-        return logits_diff
-    return logits_diff.mean()
+    # If per_prompt is True, return the logit difference per prompt
+    print(f"Logits difference tensor shape: {logits_diff.shape}")
+    return np.round(logits_diff.item(),3) if per_prompt else np.round(logits_diff.mean().item(),3)
 
 logits_diff = logits_to_ave_logit_diff(logits.unsqueeze(0))
 print (f"Logits difference between correct and distractor: {logits_diff.item()}")
