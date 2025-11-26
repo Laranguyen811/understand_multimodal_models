@@ -29,9 +29,10 @@ from torchvision.datasets import CocoCaptions
 from torchvision import transforms
 from vit_prisma.utils.prisma_utils import test_prompt
 from vit_prisma.dataloaders.visual_genome import VisualGenomeDataset, set_up_vg_paths, transform, instantiate_dataloader, iterate_dataloader, load_images
-from vit_prisma.dataloaders.coco import CocoCaptions
 from vit_prisma.utils.data_utils.visual_genome.visual_genome_objects import create_dict, base_dir
 from vit_prisma.utils.data_utils.visual_genome.visual_genome_relationships import create_rel_data, rel_base_dir, get_relationships_by_predicate
+import torch.nn.functional as F
+import pandas as pd
 # %%
 # Loading the model 
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
@@ -40,7 +41,8 @@ processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 # %%
 # Verify that the model can do the task
 #visual_genome_dataset, visual_genome_loader = instantiate_dataloader()
-loaded_images = load_images(train_path=set_up_vg_paths(verbose=True),batch_size=8)
+loaded_images = load_images(train_path=set_up_vg_paths(verbose=True),batch_size=8,verbose=False)
+print(f"Number of loaded images: {len(loaded_images)}")
 labels = create_dict(base_dir=base_dir).values()
 loaded_images_data = VisualGenomeDataset(loaded_images,labels=labels,transform=transform)
 print(f"First image:{(loaded_images)}")
@@ -102,7 +104,7 @@ print(f"IOI Test Text Prompts: {text}")
 
 
 # %%
-ioi_inputs = processor(text=text, images=loaded_images,return_tensors='pt',padding=True)
+ioi_inputs = processor(text=text, images=loaded_images[0],return_tensors='pt',padding=True)
 print(f"Input type: {type(inputs)}")
 
 with t.no_grad():
@@ -121,7 +123,47 @@ print(f"Logit values: {logits}")
 print (f"Probabilities: {probs}")
 print(f"Correct IOI probability: {np.round(probs[ioi_test_case['correct_idx']].item(),3)}")
 print(f"Distractor IOI probability: {np.round(probs[ioi_test_case['distractor_idx']].item(),3)}")
-def logits_to_ave_logit_diff(
+
+def calculate_cosine_similarity(
+        image_embeds: Tensor,
+        text_embeds: Tensor,
+        correct_idx: int = 0,
+        distractor_idx: int = 1,
+        verbose: bool = True,
+):
+    '''
+    Calculate cosine similarity between image and text embeddings.
+    Args:
+        image_embeds: Image embeddings tensor of shape (batch, d_model).
+        text_embeds: Text embeddings tensor of shape (num_texts, d_model).
+    Returns:
+        Cosine similarity tensor of shape (batch, num_texts).
+    '''
+    # Normalize the embeddings since magnitudes do not influence cosine similarity
+    image_embeds_norm = F.normalize(image_embeds, p=2, dim=-1)
+    text_embeds_norm = F.normalize(text_embeds, p=2, dim=-1)
+    correct_text_embed = text_embeds_norm[correct_idx]
+    distractor_text_embed = text_embeds_norm[distractor_idx]
+    if verbose:
+        print(f"Shape of normalized image embeddings: {image_embeds_norm.shape}")
+        print(f"Shape of normalized correct text embedding: {correct_text_embed.shape}")
+        print(f"Shape of normalized distractor text embedding: {distractor_text_embed.shape}")
+    # Calculate cosine similarity
+    cos_sim_correct =(image_embeds_norm @ correct_text_embed).squeeze(0)
+    cos_sim_distractor = (image_embeds_norm @ distractor_text_embed).squeeze(0)
+    if verbose:
+        print(f"Cosine similarity with correct text: {cos_sim_correct.item():.3f}")
+        print(f"Cosine similarity with distractor text: {cos_sim_distractor.item():.3f}")
+    cos_sim_diff = cos_sim_correct - cos_sim_distractor
+
+    return cos_sim_diff
+
+
+
+cos_sim_diff = calculate_cosine_similarity(image_embeds, text_embeds)
+print(f"Cosine similarity difference between correct and distractor: {cos_sim_diff.item():.3f}")
+
+def calculate_logits_to_ave_logit_diff(
         logits: Tensor,
         per_prompt: Bool = False,
     ) -> Float[Tensor, "batch"]:
@@ -139,11 +181,15 @@ def logits_to_ave_logit_diff(
     print(f"Logits difference tensor shape: {logits_diff.shape}")
     return np.round(logits_diff.item(),3) if per_prompt else np.round(logits_diff.mean().item(),3)
 
-logits_diff = logits_to_ave_logit_diff(logits.unsqueeze(0))
+logits_diff = calculate_logits_to_ave_logit_diff(logits.unsqueeze(0))
 print (f"Logits difference between correct and distractor: {logits_diff.item()}")
     
-
-
+metric_df = pd.DataFrame({
+    'Metric': ['Probability Difference':, 'Cosine Similarity Difference', 'Logits Difference'],
+    'Value': [np.round(probs[ioi_test_case['correct_idx']].item() - probs[ioi_test_case['distractor_idx']].item(),3), np.round(cos_sim_diff.item(),3), logits_diff]
+})
+metric_df.style.set_properties(**{'white-space': 'pre-wrap'})
+print(metric_df)
 
 
 
