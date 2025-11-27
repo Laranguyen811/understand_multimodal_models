@@ -33,27 +33,30 @@ from vit_prisma.utils.data_utils.visual_genome.visual_genome_objects import crea
 from vit_prisma.utils.data_utils.visual_genome.visual_genome_relationships import create_rel_data, rel_base_dir, get_relationships_by_predicate
 import torch.nn.functional as F
 import pandas as pd
+from IPython.display import display
 # %%
 # Loading the model 
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
 # %%
-# Verify that the model can do the task
-#visual_genome_dataset, visual_genome_loader = instantiate_dataloader()
+
+# Load images and labels
 loaded_images = load_images(train_path=set_up_vg_paths(verbose=True),batch_size=8,verbose=False)
 print(f"Number of loaded images: {len(loaded_images)}")
-labels = create_dict(base_dir=base_dir).values()
+objs,obj_dict = create_dict(base_dir=base_dir)
+labels = obj_dict.values()
 loaded_images_data = VisualGenomeDataset(loaded_images,labels=labels,transform=transform)
 print(f"First image:{(loaded_images)}")
 print(f"Type of loaded images:{type(loaded_images)}")
+# Process images
 inputs = processor(images=loaded_images,return_tensors='pt',paddings=True)
 print(f"Input type: {type(inputs)}")
 
 input_tensor = inputs['pixel_values']
 
 # %%
-obj_dict = create_dict(base_dir=base_dir)
+
 first_key,first_values = next(iter(obj_dict.items()))
 res = ', '.join(first_values)
 res = res.rsplit(', ', 1) # Split at the last comma
@@ -121,8 +124,10 @@ with t.no_grad():
     probs = logits.softmax(dim=-1)
 print(f"Logit values: {logits}")
 print (f"Probabilities: {probs}")
-print(f"Correct IOI probability: {np.round(probs[ioi_test_case['correct_idx']].item(),3)}")
-print(f"Distractor IOI probability: {np.round(probs[ioi_test_case['distractor_idx']].item(),3)}")
+correct_prob = np.round(probs[ioi_test_case['correct_idx']].item(),3)
+distractor_prob = np.round(probs[ioi_test_case['distractor_idx']].item(),3)
+print(f"Correct IOI probability: {correct_prob}")
+print(f"Distractor IOI probability: {distractor_prob}")
 
 def calculate_cosine_similarity(
         image_embeds: Tensor,
@@ -154,7 +159,7 @@ def calculate_cosine_similarity(
     if verbose:
         print(f"Cosine similarity with correct text: {cos_sim_correct.item():.3f}")
         print(f"Cosine similarity with distractor text: {cos_sim_distractor.item():.3f}")
-    cos_sim_diff = cos_sim_correct - cos_sim_distractor
+    cos_sim_diff = np.round((cos_sim_correct - cos_sim_distractor).item(),3)
 
     return cos_sim_diff
 
@@ -175,22 +180,50 @@ def calculate_logits_to_ave_logit_diff(
     Returns:
         Average logit difference tensor of shape (batch,).
     '''
-    # Calculate the logit difference between correct and distractor
-    logits_diff = logits[:, ioi_test_case['correct_idx']] - logits[:, ioi_test_case['distractor_idx']]
+    # Calculate the logit difference between correct and distractor rounded to 3 decimal places
+    logits_diff = np.round((logits[:, ioi_test_case['correct_idx']] - logits[:, ioi_test_case['distractor_idx']]).item(),3)
     # If per_prompt is True, return the logit difference per prompt
     print(f"Logits difference tensor shape: {logits_diff.shape}")
-    return np.round(logits_diff.item(),3) if per_prompt else np.round(logits_diff.mean().item(),3)
+    
+    # Calculate mean logit difference rounded to 3 decimal places
+    mean_logits_diff = np.round(logits_diff.mean().item(),3)
+    
+    return logits_diff if per_prompt else mean_logits_diff
 
 logits_diff = calculate_logits_to_ave_logit_diff(logits.unsqueeze(0))
-print (f"Logits difference between correct and distractor: {logits_diff.item()}")
-    
-metric_df = pd.DataFrame({
-    'Metric': ['Probability Difference':, 'Cosine Similarity Difference', 'Logits Difference'],
-    'Value': [np.round(probs[ioi_test_case['correct_idx']].item() - probs[ioi_test_case['distractor_idx']].item(),3), np.round(cos_sim_diff.item(),3), logits_diff]
-})
-metric_df.style.set_properties(**{'white-space': 'pre-wrap'})
-print(metric_df)
+print (f"Logits difference between correct and distractor: {logits_diff}")
 
+# %%
+# Patch-level IOI analysis
+
+def find_object_bbox(
+        objs: dict,
+        object_name: str,
+    ) -> list | None:
+    '''
+    Find object in the list of objects.
+    Args:
+        objects_data: List of object names.
+        object_name: Name of the object to find.
+    Returns:
+        bounding boxes for the object[x, y, w, h] or None if not found
+    '''
+    for obj in objs:
+        if object_name in obj['names']:
+            return [obj['x'], obj['y'], obj['w'], obj['h']]
+    return None
+
+# Example usage
+chin_bbox = find_object_bbox(objs[0]['objects'], 'chin')
+print(f"Bounding box for 'chin': {chin_bbox}")
+
+# %%  
+ioi_metric_df = pd.DataFrame({
+'Metric': ['Probability Difference', 'Cosine Similarity Difference', 'Logits Difference', 'Correct Probability', 'Distractor Probability'],
+    'Value': [np.round(probs[ioi_test_case['correct_idx']].item() - probs[ioi_test_case['distractor_idx']].item(),3), np.round(cos_sim_diff.item(),3), logits_diff, correct_prob, distractor_prob]
+})
+ioi_metric_df.style.set_properties(**{'white-space': 'pre-wrap'})
+display(ioi_metric_df)
 
 
 
