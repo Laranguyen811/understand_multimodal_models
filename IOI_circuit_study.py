@@ -34,6 +34,7 @@ from vit_prisma.utils.data_utils.visual_genome.visual_genome_relationships impor
 import torch.nn.functional as F
 import pandas as pd
 from IPython.display import display
+from typing import Any
 # %%
 # Loading the model 
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
@@ -128,7 +129,8 @@ correct_prob = np.round(probs[ioi_test_case['correct_idx']].item(),3)
 distractor_prob = np.round(probs[ioi_test_case['distractor_idx']].item(),3)
 print(f"Correct IOI probability: {correct_prob}")
 print(f"Distractor IOI probability: {distractor_prob}")
-
+probability_diff = np.round((correct_prob - distractor_prob),3)
+print(f"Difference in probabilities: {probability_diff}")
 def calculate_cosine_similarity(
         image_embeds: Tensor,
         text_embeds: Tensor,
@@ -183,7 +185,6 @@ def calculate_logits_to_ave_logit_diff(
     # Calculate the logit difference between correct and distractor rounded to 3 decimal places
     logits_diff = np.round((logits[:, ioi_test_case['correct_idx']] - logits[:, ioi_test_case['distractor_idx']]).item(),3)
     # If per_prompt is True, return the logit difference per prompt
-    print(f"Logits difference tensor shape: {logits_diff.shape}")
     
     # Calculate mean logit difference rounded to 3 decimal places
     mean_logits_diff = np.round(logits_diff.mean().item(),3)
@@ -216,6 +217,133 @@ def find_object_bbox(
 # Example usage
 chin_bbox = find_object_bbox(objs[0]['objects'], 'chin')
 print(f"Bounding box for 'chin': {chin_bbox}")
+
+def get_patch_embeddings(
+        model: Any,
+        image_tensor: Tensor,
+    ) -> Tensor:
+    '''
+    Get patch embeddings from the model.
+    Args:
+        model: Any models.
+        image_tensor: Image tensor of shape (batch, channels, height, width).
+    Returns:
+        Patch embeddings tensor of shape (num_patches, d_model).
+    '''
+    # Obtain patch embeddings
+    with t.no_grad():
+        # Get vision model outputs with hidden states
+        vision_outputs = model.vision_model(
+            pixel_values=inputs['pixel_values'],
+            output_hidden_states=True,
+        )
+        vision_patch_embeddings = vision_outputs.last_hidden_state # (batch, num_patches, hidden_dim). Obtain the last hidden state because it contains the patch embeddings.
+        print(f"Patch embeddings shape: {vision_patch_embeddings.shape}")
+
+        # Text embeddings
+        text_outputs = model.text_model(
+            input_ids=inputs['input_ids'],
+            attention_mask=inputs['attention_mask'] # Need attention mask for proper processing because of padding. Tells model to ignore padding
+        )
+        text_embeddings = text_outputs.pooler_output # (batch, hidden_dim)
+        print(f"Text embeddings shape: {text_embeddings.shape}")
+
+        # Normalise embeddings
+        vision_patch_embeddings_norm = F.normalize(vision_patch_embeddings, p=2, dim=-1)
+        text_embeddings_norm = F.normalize(text_embeddings, p=2, dim=-1)
+
+        # Calculate cosine similarities per patch
+        cosine_similarities = vision_patch_embeddings_norm @ text_embeddings_norm.T # (batch, num_patches, batch)
+        return cosine_similarities
+    
+def find_patch_to_correct_object(
+        cosine_similarities: Tensor,
+        text: list,
+    ):
+    '''
+    Find the patch index with the highest cosine similarity to the correct object.
+    Args:
+        cosine_similarities: Cosine similarities tensor of shape (batch, num_patches, num_texts).
+        correct_idx: Index of the correct text prompt.
+    Returns:
+        Top 5 most similar patches.
+    '''
+    for text_idx in range(len(text)):
+        # Get cosine similarities for the correct object
+        patch_sims = cosine_similarities[0,:, text_idx] # (num_patches,)
+        top_patches = patch_sims.topk(5)
+
+        print(f"Text:{text[text_idx]}")
+        print(f"Top 5 patches: {top_patches}")
+        print(f"Top 5 patch indices: {top_patches.indices.tolist()}")
+
+def get_region_embeddings(
+        patch_embeddings: Tensor,
+        bbox: list,
+        image_size:tuple = (224,224),
+        patch_size:int = 16,
+) -> Tensor|None:
+    '''
+    Get region embeddings from patch embeddings based on bounding box.
+    Args:
+        patch_embeddings: Patch embeddings tensor of shape (num_patches, d_model).
+        bbox: Bounding box [x, y, w, h].
+        image_size: Size of the image (height, width).
+        patch_size: Size of each patch.
+    Returns:
+        Region embeddings tensor of shape (num_region_patches, d_model).
+    '''
+    # Convert bounding box to patch coordinates
+    num_patches_per_side = image_size[0] // patch_size
+    print(f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}")
+    # Scale bounding box to patch grid
+    x_start = int(bbox[0] / image_size[0] * num_patches_per_side) # left most patch column where the object begins. Calculated by dividing the x coordinate of the bbox by the image width and multiplying by number of patches per side. 
+    y_start = int(bbox[1] / image_size[1] * num_patches_per_side) # top most patch row where the object begins. Calculated by dividing the y coordinate of the bbox by the image height and multiplying by number of patches per side.
+    x_end = int((bbox[0] + bbox[2]) / image_size[0] * num_patches_per_side) # right most patch column where the object ends. Calculated by dividing the (x coordinate + width) of the bbox by the image width and multiplying by number of patches per side.
+    y_end = int((bbox[1] + bbox[3]) / image_size[1] * num_patches_per_side) # bottom most patch row where the object ends. Calculated by dividing the (y coordinate + height) of the bbox by the image height and multiplying by number of patches per side.
+
+    # Extract patches in region (assuming patches arranged in grid)
+    region_patches = []
+    for y in range(y_start, y_end + 1):
+        for x in range(x_start, x_end):
+            patch_idx = y * num_patches_per_side + x
+            if patch_idx < patch_embeddings.shape[0]:
+                region_patches.append(patch_embeddings[patch_idx])
+    if region_patches:
+        region_embeddings = t.stack(region_patches).mean(dim=0) # Average embeddings of region patches
+        return F.normalize(region_embeddings, p=2, dim=-1) # Normalize region embeddings
+    return None
+
+def compare_region_cosine_similarity(
+        patch_embeddings: Tensor,
+        text_embeddings: Tensor
+) -> float|None:
+    '''
+    Compare cosine similarity between region embeddings and text embeddings.
+    Args:
+        patch_embeddings: Patch embeddings tensor of shape (num_patches, d_model).
+        text_embeddings: Text embeddings tensor of shape (num_texts, d_model).
+    Returns:
+     Difference in cosine similarity between correct and distractor region embeddings.
+    '''
+    correct_bbox = find_object_bbox(objs[0]['objects'], ioi_test_case['correct_object'])
+    distractor_bbox = find_object_bbox(objs[0]['objects'], ioi_test_case['distractors'])
+    correct_region_embeds = get_region_embeddings(patch_embeddings, correct_bbox)
+    distractor_region_embeds = get_region_embeddings(patch_embeddings, distractor_bbox)
+    if correct_region_embeds is None or distractor_region_embeds is None:
+        print("Could not find region embeddings for correct or distractor object.")
+        return None 
+    query_text_embeddings = text_embeddings[0]   
+    correct_cos_sim = (correct_region_embeds @ query_text_embeddings).item()
+    distractor_cos_sim = (distractor_region_embeds @ query_text_embeddings).item()
+    cos_sim_diff = correct_cos_sim - distractor_cos_sim
+    return cos_sim_diff
+
+
+
+    
+
+
 
 # %%  
 ioi_metric_df = pd.DataFrame({
