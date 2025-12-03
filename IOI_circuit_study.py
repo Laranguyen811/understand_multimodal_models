@@ -411,8 +411,22 @@ def imshow(tensor,renderer=None, midpoint=0, **kwargs):
     '''
     Display a tensor as an image.
     '''
-    px.imshow(
-)
+    px.imshow(tensor.to_numpy(), color_continuous_midpoint=midpoint, color_continuous_scale="RdBu", **kwargs).show(renderer)
+
+def line(tensor,renderer=None, **kwargs):
+    '''
+    Display a tensor as a line plot.
+    '''
+    px.line(tensor.numpy(), **kwargs).show(renderer)
+def scatter(x: Tensor, y: Tensor, x_axis="", y_axis="", c_axis="", renderer=None, **kwargs):
+    '''
+    Display a scatter plot.
+    '''
+    x=x.numpy()
+    y=y.numpy()
+    px.scatter(x=x, y=y,labels={"x":x_axis, "y":y_axis,"color":c_axis}, **kwargs).show(renderer)
+
+from patching_
 
 
 # %%  
