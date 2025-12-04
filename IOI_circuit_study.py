@@ -426,8 +426,6 @@ def scatter(x: Tensor, y: Tensor, x_axis="", y_axis="", c_axis="", renderer=None
     y=y.numpy()
     px.scatter(x=x, y=y,labels={"x":x_axis, "y":y_axis,"color":c_axis}, **kwargs).show(renderer)
 
-from patching_
-
 
 # %%  
 ioi_metric_df = pd.DataFrame({
