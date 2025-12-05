@@ -1,7 +1,7 @@
 
 from torch.utils.data import DataLoader, Dataset
 from functools import partial
-import torch as t
+import torch
 from rich.progress import track
 from vit_prisma import utils
 import numpy as np
@@ -91,102 +91,135 @@ def patch_full_residual_component(
     corrupted_residual_component[:, pos_index, :] = corrupted_cache[hook.name][:, pos_index, :]
     return corrupted_residual_component
 
-def path_patching(model: Any,
-                  receiver_nodes,
-                  source_tokens, 
-                  patch_tokens,
-                  ans_tokens, 
-                  component: str = 'z',
-                  position:int = -1,
-                  freeze_mlps: Bool = False,
-                  indirect_patch:Bool = False,
-                  truncate_to_max_layer: Bool = False, 
+def path_patching(
+        model: Any,
+        D_new,
+        D_orig,
+        sender_heads,
+        receiver_hooks,
+        positions=["end"],
+        return_hooks:Bool=False,
+        extra_hooks=[],
+        freeze_mlps: Bool=False,
+        have_internal_interactions: Bool = False,
                   ):
     '''
-    Performs path patching.
+    Isolates indirect effects from direct effects by replacing components in a model's forward pass with different activations and comparing the change.
+    
     Args:
-        model: Model to perform path patching on
-        receiver_nodes: Terms in the forward pass that receive patching
-        source_tokens: Tokens that are from source
-        patch_tokens: Tokens to patch
-        ans_tokens: Answer tokens (correct ones)
-        component: Part of model we need to reverse engineer
-        position: Position to path patch
-        freeze_mlps: Whether to freeze (removing the influence of every path including one or more intermediate attention heads) MLPs or not 
-        indirect_patch: Patch indirectly or not
-        truncate_to_max_layer: Whether to truncate to max layer or not
+        model: Model to perform path patching on.
+        D_orig: The original data point.
+        D_new: The new data point.
+        sender_heads: The sender attention head.
+        receiver_hooks: The receiver hooks (Hooks allow us to do something after an interpretability frameworks compute intermediate values)
+        positions: Positions to patch.
+        return_hooks: Whether to return hooks or not. 
+        extra_hooks: Store extra hooks.
+        freeze_mlps: Whether to freeze MLPs (Multiple Layer Perceptrons) or not.
+        have_internal_interactions: Whether there are internal interactions or not. 
+    
     Returns:
-        patched_head_pq_diff: Tensor
+        Tensor or Model
     '''
-    model.reset_hooks() # Reset hooks in the model
-    print(f"Component:{component}")
+    def patch_positions(z, source_act, hook, positions["end"], verbose=False):
+        '''
+        Determines the positions to patch. 
+        '''
+        for pos in positions:
+            z[torch.arange(D_orig.N), D_orig.word_idx[pos]] = source_act[torch.arange(D_new.N), D_new.word_idx[pos]] # Creates a new tensor
 
-    # Obtain original logits and cache 
-    original_logits, cache = model.run_with_cache(source_tokens)
+        return z
 
-    # Calculate the logit difference
-    original_logit_diff = calculate_logits_to_ave_logit_diff(original_logits,ans_tokens)
+    # Process arguments
 
-    # Obtain label tokens
-    label_tokens = ans_tokens[:, 0]
+    sender_hooks = []
+    for layer, head_idx in sender_heads:
+        if head_idx is None: # If head index is not empty
+            sender_hooks.append((f"blocks.{layer}.hook_mlp_out",None)) # Append to sender hooks
 
-    # Obtain the original label logits
-    original_label_logits = original_logits[:, -1][list(range(len(original_logits))), label_tokens]
+    sender_hook_names = [x[0] for x in sender_hooks]
+    receiver_hook_names = [x[0] for x in receiver_hooks]
 
-    # Obtain corrupted logits and corrupted cache
-    corrupted_logits, corrupted_cache = model.run_with_cache(patch_tokens)
-    corrupted_logit_diff = calculate_logits_to_ave_logit_diff(corrupted_logits,ans_tokens)
-    print(f"Corrupted logit difference:{corrupted_logit_diff}, Original logit difference: {original_logits}")
+    # Forward pass A
+    sender_cache = {}
+    model.reset_hooks() # Reset hooks in model
+    for hook in extra_hooks: # Looping through extra hooks
+        model.add_hook(*hook) # Add hook to model
+    model.cache_some(
+        sender_cache, lambda x:x in sender_hook_names, suppress_warning=True
+    ) # Cache the activations from certain specified locations into the sender_cache dictionary, and only adds activations from hook points whose names are in the sender_hook_names 
 
-    del corrupted_logit_diff
+    # Forward pass B
+    target_cache = {}
+    model.reset_hooks()
+    for hook in extra_hooks:
+        model.add_hooks(*hook)
+    model.cache_all(target_cache, suppress_warning=True) # Cache all the target cache
+    target_logits = model(D_orig.toks.long())
 
-    patched_head_pq_diff = t.zeros(model.cfg.n_layers, model.cfg.n_heads)
+    # Forward pass C
+    # Cache the receiver hooks
+    # Adding these hooks first means we save values before they are overwritten
+    receiver_cache = {}
+    model.reset_hooks()
+    model.cache_some(
+        receiver_cache,
+        lambda x: x in receiver_hook_names,
+        suppress_warning=True,
+        verbase=False
+    ) # Cache activations from receiver. Only those in receiver_hook_names will be cached
+
+# Freeze intermediate heads to their D_orig values
+    for layer in range(model.cf.n_layers): # Looping through layers
+        for head_idx in range(model.cfg.n_heads): # Looping through number of heads
+            for hook_template in [
+                "blocks.{}.attn.hook_q",
+                "blocks.{}.attn.hook_k",
+                "blocks.{}.attn.hook_v",
+            ]:
+                hook_name = hook_template.format(layer)
+
+                if have_internal_interactions and hook_name in receiver_hook_names:
+                    continue # Continue if there are internal interactions and hook name is in receiver_hook_names
+
+                hook = get_act_hook(
+                    patch_all,
+                    alt_act=target_cache[hook_name],
+                    idx=head_idx,
+                    dim=2 if head_idx is not None else None,
+                    name=hook_name,
+                    )
+                model.add_hook(hook_name, hook)
+            
+            if freeze_mlps:
+                hook_name = f"blocks.{layer}.hook_mlp_out"
+                hook = get_act_hook(
+                    patch_all,
+                    alt_act=target_cache[hook_name],
+                    idx=None,
+                    dim=None,
+                    name=hook_name,
+                )
+                model.add_hook(hook_name, hook)
+
+        for hook in extra_hooks:
+            model.add_hook(*hook) # Adding hook in extra_hooks to model
 
 
-    def add_hook_to_attn(attn_block, hook_fn):
-        if component=='v':
-            attn_block.hook_v.add_hook(hook_fn)
-        elif component=="q":
-            attn_block.hook_q.add_hook(hook_fn)
-        elif component=="k":
-            attn_block.hook_k.add_hook(hook_fn)
-        elif component=="z":
-            attn_block.hook_z.add_hook(hook_fn)
-        else:
-            raise Exception(f"Component must be q,k,v, or z. You passed {component}")
-        
-    max_layer = model.cfg.n_layers
-    if truncate_to_max_layer:
-        target_layers = [r[0] for r in receiver_nodes]
-        for t in target_layers:
-            if type(t)==int: # If t is an integer
-                max_layer = min(t, max_layer)
-        if max_layer < model.cfg.n_layers:
-            max_layer += 1 # Go up to max layer inclusive
+        # These hooks will overwrite the freezing, for the sender heads
+        for hook_name, head_idx in sender_hooks:
+            assert not torch.allclose(sender_cache[hook_name], target_cache[hook_name]),(
+                hook_name,
+                head_idx,
+            ) # Check if sender cache is similar to target cache for hook name and head index in sender_hooks
 
-    for layer in track(list(range(max_layer))):
-        # Update progress information on each iteration
-        for head_idx in range(model.cfg.n_heads):
-            model.reset_hooks()
-            if (layer, head_idx) in receiver_nodes:
-                continue
-                
-            # Adding this before lets us cache the values before overwriting them
-            receiver_cache = {}
-            for recv_layer, recv_head in receiver_nodes:
-                cache_fn = partial(cache_activation_hook, my_cache=receiver_cache)
-                # Create a new function based on a pre-filled function 
-                if recv_head is None:
-                    model.add_hook(recv_layer, cache_fn)
-                else: 
-                    add_hook_to_attn(model.blocks[recv_layer].attn, cache_fn)
-                
-            # Add hooks for the sender nodes layer, head index
-            hook_fn = partial(patch_head_vector_at_pos, head_idx=head_idx, pos_idx = position, )
+            hook = get_act_hook(
+                partial(patch_positions, positions=positions),
+                alt_act=sender_cache[hook_name],
+                idx=head_idx,
+                dim=2 if head_idx is not None else None, 
+                name=hook_name
+            )
+            model.add_hook(hook_name,hook)
+            receiver_logits = model(D_orig.toks.long())
 
-
-
-
-    
-        
-    

@@ -55,7 +55,7 @@ import pandas as pd
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 print(f"Loaded CLIP model: {clip_model}")
-
+print(f"Type of CLIP model:{type(clip_model)}")
 # %%
 # Study Compositional Copying (IOI) task, copying an image feature given a text cue, setup 
 # Load images and labels
