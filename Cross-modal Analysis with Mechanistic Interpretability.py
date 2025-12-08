@@ -56,7 +56,7 @@ from torchvision.transforms.functional import to_pil_image
 #root = os.getenv('DATA_ROOT', '/train2017/train2017')
 #annFile = os.getenv('ANN_FILE',"/annotations_trainval2017/annotations/captions_train2017.json")
 print("Working Directory:", os.getcwd())
-base_dir = os.getenv("directory","")
+base_dir = os.getenv("coco_directory","")
 print(f"Base directory: {base_dir}")
 train_path = os.path.join(base_dir, "train2017","train2017")
 ann_path = os.path.join(base_dir,"annotations_trainval2017","annotations","captions_train2017.json")
@@ -167,6 +167,7 @@ def plot_logit_boxplot(average_logits, labels):
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 print(model)
+print(f"Type of CLIP model: {type(model)}")
 
 # %%
 # Collate function
@@ -279,6 +280,7 @@ clip_image_logits, clip_image_cache = clip_model.run_with_cache(
 )
 print(type(clip_image_logits), type(clip_image_cache))
 print(f"CLIP Image cache:",clip_image_cache)
+print(f"Type of CLIP cache:{type(clip_image_cache)}")
 # %%
 
 # Accessing attention patterns from the first layer
@@ -286,6 +288,7 @@ attn_patterns_from_shorthand = clip_image_cache["pattern",0]
 attn_patterns_from_full_name = clip_image_cache["blocks.0.attn.hook_pattern"]
 print(f"Attention patterns from shorthand: {attn_patterns_from_shorthand.shape}")
 print(f"Attention patterns from full name: {attn_patterns_from_full_name.shape}")
+print(f"Type of attention patterns from shorthand:{type(attn_patterns_from_shorthand)},Type of attention patterns from full name:{type(attn_patterns_from_full_name)}")
 act_names = prisma_utils.get_act_name("pattern", 0)  # Get the names of the activations
 print(f"Activation names: {act_names}")
 # %%
@@ -307,6 +310,7 @@ attn_scores = attn_scores/(d ** 0.5)  # Scale the attention scores
 layer_0_pattern_from_q_k = attn_scores.softmax(-1)  # Softmax over the last dimension to get the attention pattern
 print(f"Shape of layer 0 pattern from cache: {layer_0_pattern_from_cache.shape}")
 print(f"Shape of attention scores from q and k: {layer_0_pattern_from_q_k.shape}")
+print(f"Type of hook q:{type(hook_q)}, Type of hook k: {type(hook_k)}")
 t.testing.assert_close(layer_0_pattern_from_cache, layer_0_pattern_from_q_k)  # Check if they are numerically close to each other
 print("The attention patterns from cache and from q and k are numerically close to each other.")
 # %%

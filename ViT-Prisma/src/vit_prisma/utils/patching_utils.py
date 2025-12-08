@@ -7,9 +7,11 @@ from vit_prisma import utils
 import numpy as np
 from torch import Tensor
 from jaxtyping import Bool, Float
-from typing import Any
+from typing import Any, List, Tuple, Optional, Dict
 from rich.progress import track
 from vit_prisma.prisma_tools import activation_cache
+import warnings
+from vit_prisma.utils.experiments import get_act_hook
 
 def calculate_logits_to_ave_logit_diff(
         logits: Tensor,
@@ -19,8 +21,8 @@ def calculate_logits_to_ave_logit_diff(
     '''
     Returns the average logit difference between the correct and distractor prompts.
     Args:
-        logits: Logits tensor of shape (batch, seq, d_model).
-        per_prompt: If True, returns the logit difference per prompt.
+        logits(Tensor): Logits tensor of shape (batch, seq, d_model).
+        per_prompt (Bool): If True, returns the logit difference per prompt.
     Returns:
         Average logit difference tensor of shape (batch,).
     '''
@@ -66,10 +68,10 @@ def cache_activation_hook(
     '''
     Storing activation.
     Args:   
-        hook: hook point
-        my_cache: cache to obtain activation
+        hook(Tensor): A tensor of a hook point. 
+        my_cache(ActivationCache): An ActivationCache of a cache to obtain activation
     Returns:
-        activation: Tensor
+        Tensor
     '''
     my_cache[hook.name] = activation
 
@@ -81,15 +83,48 @@ def patch_full_residual_component(
     '''
     Patching with corrupted residual component.
     Args:
-        corrupted_residual_component: residual component to patch with.
-        hook: hook point
-        pos_index: positional index
-        corrupted_cache: cache that has been corrupted
+        corrupted_residual_component(float): A float of a residual component to patch with.
+        hook(Tensor): A tensor of a hook point.
+        pos_index (int): An integer of a positional index.
+        corrupted_cache (ActivationCache): An ActivationCache of a cache that has been corrupted. 
     Return:
-        corrupted_residual_component: Tensor
+        Tensor
     '''
     corrupted_residual_component[:, pos_index, :] = corrupted_cache[hook.name][:, pos_index, :]
     return corrupted_residual_component
+
+def patch_all(z: Tensor, source_act: Tensor, hook: Tensor):
+    '''
+    Patch the source activations.
+    Args:
+        z(Tensor): A tensor of a corrupted activation.
+        source_act (Tensor): A source activation.
+        hook (Tensor): A tensor of a hook point. 
+    Returns:
+        Tensor
+    '''
+    return source_act
+
+def get_hook_tuple(
+        layer: int, 
+        head_idx: int, 
+        comp=None, 
+        input:Bool=False,
+        ):
+    '''
+    Gets the hook tuple.
+    Args:
+        layer (int): An integer of the layer.
+        head_idx (int): An integer of the head index.
+        comp (str): A string of the hook name, set to None.
+        input (Bool): A boolean of whether there is an input or not, set to None.
+    Returns:
+        Tuple   
+    '''
+    if comp is None and head_idx is None and input:
+        return (f"blocks.{layer}.hook_resid_mid", None)
+                
+
 
 def path_patching(
         model: Any,
@@ -111,7 +146,7 @@ def path_patching(
         D_orig: The original data point.
         D_new: The new data point.
         sender_heads: The sender attention head.
-        receiver_hooks: The receiver hooks (Hooks allow us to do something after an interpretability frameworks compute intermediate values)
+        receiver_hooks: The receiver hooks (Hooks allow us to do something after an interpretability frameworks compute intermediate values).
         positions: Positions to patch.
         return_hooks: Whether to return hooks or not. 
         extra_hooks: Store extra hooks.
@@ -214,12 +249,80 @@ def path_patching(
             ) # Check if sender cache is similar to target cache for hook name and head index in sender_hooks
 
             hook = get_act_hook(
-                partial(patch_positions, positions=positions),
-                alt_act=sender_cache[hook_name],
-                idx=head_idx,
-                dim=2 if head_idx is not None else None, 
-                name=hook_name
+                partial(patch_positions, positions=positions), # Create a new function
+                alt_act=sender_cache[hook_name], # Use the activation
+                idx=head_idx, # The index is the head index
+                dim=2 if head_idx is not None else None, # Dimension is 2 if head index is not empty; otherwise, None.
+                name=hook_name # Name is hook name
             )
             model.add_hook(hook_name,hook)
-            receiver_logits = model(D_orig.toks.long())
+            receiver_logits = model(D_orig.toks.long()) # Assign receiver logits to the logits of the original data point
 
+        # Add (or return) all the hooks needed for forward pass D
+        model.reset_hooks()
+        hooks = []
+        for hook in extra_hooks:
+            hook.append(hook)
+        
+        for hook_name, head_idx in receiver_hooks: # Loop through hook names and head indices in receiver hooks
+            for pos in positions: # Loop through position in positions
+                if torch.allclose(receiver_cache[hook_name][torch.arange(D_orig.N), D_orig.word_idx[pos]],
+                                  target_cache[hook_name][torch.arange(D_orig.N), D_orig.word_idx[pos]],): # If the elements of receiver cache and target cache at hook name and the position of word index and D_orig.N are all close (numerically similar)
+                    
+                    warnings.warn("Torch all close for {}".format(hook_name))
+            
+            hook = get_act_hook(
+                partial(patch_positions, positions=positions), # Create a new function
+                alt_act=receiver_cache[hook_name], # Use the activation
+                idx=head_idx, # The index is the head index
+                dim=2 if head_idx is not None else None, # Dimension is 2 if head index is not empty; otherwise, None. 
+                name=hook_name, # Name is hook name
+            ) # Get the activation hook
+            hooks.append((hook_name, hook)) # Append hook name and hook to hooks
+        
+        model.reset_hooks()
+        if return_hooks:
+            return hooks
+        else:
+            for hook_name, hook in hooks:
+                model.add_hook(hook_name, hook)
+            return model
+
+def direct_path_patching(
+        model: Any,
+        orig_data: Tensor,
+        new_data: Tensor,
+        initial_receivers_to_senders: List[Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int], str]]],
+        orig_positions: int,
+        new_positions: int,
+        orig_cache = None,
+        new_cache = None,
+
+
+) -> Any:
+    '''
+    Path patching for direct effects only, excluding indirect effects.
+    Args:
+        model: A model to path patch.
+        orig_data: An original data point.
+        new_data: A new data point. 
+        initial_receivers_to_senders: Edges patched from new cache.
+        orig_positions: Positions of the original data point.
+        new_positions: Positions of the new data point.
+        new_cache: Cache of the new data point.
+    Returns:
+        Model
+    '''
+    # Caching
+    if orig_cache is None:
+        # Save activations from the original data point
+        model.reset_hooks()
+        orig_cache = {}
+        model.cache_all(orig_cache)
+        _ = model(orig_data, prepend_bos=False) # A placeholder variable 
+        model.reset_hooks() # Reset hooks
+
+    initial_senders_hook_names = [
+        get_hook_tuple(item[1][0], item[1][1])[0]
+        for item in initial_receivers_to_senders
+    ] 
