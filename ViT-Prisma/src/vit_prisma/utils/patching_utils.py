@@ -12,6 +12,7 @@ from rich.progress import track
 from vit_prisma.prisma_tools import activation_cache
 import warnings
 from vit_prisma.utils.experiments import get_act_hook
+from vit_prisma.utils.detect_architectures import detect_architecture
 
 def calculate_logits_to_ave_logit_diff(
         logits: Tensor,
@@ -106,11 +107,13 @@ def patch_all(z: Tensor, source_act: Tensor, hook: Tensor):
     return source_act
 
 def get_hook_tuple(
+        model: Any,
         layer: int, 
         head_idx: int, 
         comp=None, 
         input:Bool=False,
-        ):
+        n_layers: int=12,
+        ) -> Tuple:
     '''
     Gets the hook tuple.
     Args:
@@ -119,10 +122,18 @@ def get_hook_tuple(
         comp (str): A string of the hook name, set to None.
         input (Bool): A boolean of whether there is an input or not, set to None.
     Returns:
-        Tuple   
+        Tuple of (hook_name, head_idx)
     '''
-    if comp is None and head_idx is None and input:
-        return (f"blocks.{layer}.hook_resid_mid", None)
+    arch = detect_architecture(model)
+    HOOKS = {}
+
+    # Determin component 
+    if comp in ['q','k','v']:
+        hook_pattern = HOOKS[comp][arch]
+    elif head_idx is None:
+        hook_pattern = HOOKS[arch]['mlp_out' if not input else 'resid_mid']
+
+
                 
 
 
@@ -326,3 +337,27 @@ def direct_path_patching(
         get_hook_tuple(item[1][0], item[1][1])[0]
         for item in initial_receivers_to_senders
     ] 
+    if new_cache is None:
+        # Save activations from new for senders
+        model.reset_hooks()
+        new_cache = {}
+        model.cache_some(new_cache, lambda x: x in initial_senders_hook_names)
+        _ = model(new_data, prepend_bos=False)
+    else:
+        assert all(
+            [x in new_cache for x in initial_senders_hook_names]
+        ), f"Incomplete new_cache. Missing {set(initial_senders_hook_names) - set(new_cache.keys())}"
+    model.reset_hooks()
+
+    # Set up a way for model components to dynamically see activations from the same forward pass
+    for name, hp in model.hook_dict.items():
+        assert (
+            "model" not in hp.ctx or hp.ctx["model"] is model
+        ), "Multiple models used as hook point references!"
+        hp.ctx["model"] = model
+        hp.ctx["hook_bname"] = name
+    
+    model.cache = (
+        {}
+    ) # This cache is populated and used on the same forward pass
+
