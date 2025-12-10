@@ -7,7 +7,7 @@ from vit_prisma import utils
 import numpy as np
 from torch import Tensor
 from jaxtyping import Bool, Float
-from typing import Any, List, Tuple, Optional, Dict
+from typing import Any, List, Tuple, Optional, Dict, Callable
 from rich.progress import track
 from vit_prisma.prisma_tools import activation_cache
 import warnings
@@ -127,14 +127,16 @@ def get_hook_tuple(
     arch = detect_architecture(model)
     HOOKS = {}
 
-    # Determin component 
+    # Determine component 
     if comp in ['q','k','v']:
         hook_pattern = HOOKS[comp][arch]
     elif head_idx is None:
         hook_pattern = HOOKS[arch]['mlp_out' if not input else 'resid_mid']
-
-
-                
+    else:
+        hook_pattern = HOOKS[arch]['attn_out']
+    
+    hook_name = hook_pattern.format(layer=layer)
+    return (hook_name,head_idx)
 
 
 def path_patching(
@@ -278,7 +280,7 @@ def path_patching(
         for hook_name, head_idx in receiver_hooks: # Loop through hook names and head indices in receiver hooks
             for pos in positions: # Loop through position in positions
                 if torch.allclose(receiver_cache[hook_name][torch.arange(D_orig.N), D_orig.word_idx[pos]],
-                                  target_cache[hook_name][torch.arange(D_orig.N), D_orig.word_idx[pos]],): # If the elements of receiver cache and target cache at hook name and the position of word index and D_orig.N are all close (numerically similar)
+                                  target_cache[hook_name][torch.arange(D_orig.N), D_orig.word_idx[pos]],): # If the elements of receiver cache and target cache at hook name and the position of word index and the number of batches of the original data point are all close (numerically similar)
                     
                     warnings.warn("Torch all close for {}".format(hook_name))
             
@@ -298,14 +300,42 @@ def path_patching(
             for hook_name, hook in hooks:
                 model.add_hook(hook_name, hook)
             return model
+def input_activation_editor(
+        z,
+        hook, 
+        receivers_to_senders: Dict[Tuple[str, Optional[int]],List[Tuple[int, Optional[int], str]]],
+        initial_receivers_to_senders: List[Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int], str]]],
+        head_idx = None,
+        
+):
+    '''
+    Edits input activations.
+    '''
+    new_z = z.clone() # Clone z
+    N = z.shape[0] # Assign N to the batch dimension
+    hook_name = hook.ctx["hook_name"]
+    assert(
+        len(receivers_to_senders[(hook_name,head_idx)]) >0
+    ), f"No senders for {hook_name, head_idx}, this should not be attached."
+
+    for sender_layer_idx, sender_head_idx, sender_head_pos in receivers_to_senders[(hook_name,head_idx)]:
+        sender_hook_name, sender_head_idx = get_hook_tuple(model, sender_head_idx,sender_head_idx)
+
+        if (
+            (hook_name,head_idx),
+            (sender_layer_idx,sender_head_idx, sender_head_pos),
+        ) in initial_receivers_to_senders:
+            cache_to_use = new_cache
+
 
 def direct_path_patching(
         model: Any,
         orig_data: Tensor,
         new_data: Tensor,
         initial_receivers_to_senders: List[Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int], str]]],
-        orig_positions: int,
-        new_positions: int,
+        receivers_to_senders: Dict[Tuple[str, Optional[int]],List[Tuple[int, Optional[int], str]]],
+        orig_positions,
+        new_positions,
         orig_cache = None,
         new_cache = None,
 
@@ -334,7 +364,7 @@ def direct_path_patching(
         model.reset_hooks() # Reset hooks
 
     initial_senders_hook_names = [
-        get_hook_tuple(item[1][0], item[1][1])[0]
+        get_hook_tuple(model,item[1][0], item[1][1])[0]
         for item in initial_receivers_to_senders
     ] 
     if new_cache is None:
@@ -361,3 +391,162 @@ def direct_path_patching(
         {}
     ) # This cache is populated and used on the same forward pass
 
+    def input_activation_editor(
+        z,
+        hook, 
+        head_idx = None,
+        
+    ):
+        '''
+        Edits input activations.
+        '''
+        new_z = z.clone() # Clone z
+        N = z.shape[0] # Assign N to the batch dimension
+        hook_name = hook.ctx["hook_name"]
+        assert(
+            len(receivers_to_senders[(hook_name,head_idx)]) >0
+        ), f"No senders for {hook_name, head_idx}, this should not be attached."
+
+        for sender_layer_idx, sender_head_idx, sender_head_pos in receivers_to_senders[(hook_name,head_idx)]:
+            sender_hook_name, sender_head_idx = get_hook_tuple(model, sender_head_idx,sender_head_idx)
+
+            if (
+                (hook_name,head_idx),
+                (sender_layer_idx,sender_head_idx, sender_head_pos),
+            ) in initial_receivers_to_senders:
+                cache_to_use = new_cache
+                positions_to_use = orig_positions
+
+            else: 
+                cache_to_use = hook.ctx["model"].cache
+                positions_to_use = orig_positions
+            
+            # We have to do both casewise
+            if sender_head_idx is None:
+                sender_value = (
+                    cache_to_use[sender_hook_name][
+                        torch.arange(N), positions_to_use[sender_head_pos]
+                    ]
+                    - orig_cache[sender_hook_name][
+                        torch.arange(N), positions_to_use[sender_head_pos]
+                    ]
+                )
+            else:
+                sender_value = (
+                    cache_to_use[sender_hook_name][
+                        torch.arange(N),
+                        positions_to_use[sender_head_pos],
+                        sender_head_idx,
+                    ]
+                    - orig_cache[sender_hook_name][
+                        torch.arange(N),
+                        positions_to_use[sender_head_pos],
+                        sender_head_idx,
+                    ]
+                )
+            
+            if head_idx is None:
+                assert(
+                    new_z[torch.arange(N), positions_to_use[sender_head_pos], :].shape == sender_value.shape
+                
+                ), f"{new_z.shape} is different from {sender_value.shape}"
+
+                new_z[
+                    torch.arange(N), positions_to_use[sender_head_pos]
+                ] += sender_value
+
+            else:
+                assert(
+                    new_z[
+                        torch.arange(N), positions_to_use[sender_head_pos], head_idx
+                    ].shape
+                    == sender_value.shape
+                ), f"{new_z[:, positions_to_use[sender_head_pos], head_idx].shape} is different from {sender_value.shape}, {positions_to_use[sender_head_pos].shape}"
+
+                new_z[
+                    torch.arange(N), positions_to_use[sender_head_pos], head_idx
+                ] += sender_value
+
+            return new_z
+    # Save and overwrite outputs of attention and MLP layers
+    def layer_output_hook(z,hook):
+        '''
+        Save and overwrite outputs of attention and MLP layers.
+        '''
+        hook_name = hook.ctx["hook_name"]
+        hook.ctx["model"].cahce[hook_name] = z.clone()
+        assert (
+            z.shape == orig_cache[hook_name].shape
+        ), f"Shape mismatch between {z.shape} and {orig_cache[hook_name].shape}"
+        z[:] = orig_cache[hook_name]
+
+        return z
+    
+    for layer_idx in range(model.cfg.n_layers):
+        for head_idx in range(model.cfg.n_heads):
+            # If this is a receiver, compute the input activations carefully
+            for letter in ["q","k","v"]:
+                hook_name = f"blocks.{layer_idx}.attn.hook_{letter}_input"
+                if (hook_name, head_idx) in receivers_to_senders:
+                    model.add_hook(
+                        name=hook_name,
+                        hook=partial(input_activation_editor, head_idx=head_idx), # Create a new function
+
+                    )
+        hook_name = f"blocks.{layer_idx}.hook_resid_mid"
+
+        if (hook_name, None) in receivers_to_senders:
+            model.add_hook(name=hook_name, hook=input_activation_editor)
+        
+        # Add the hooks that save and edit outputs
+        for hook_name in [
+            f"blocks.{layer_idx}.attn.hook_result",
+            f"blocks.{layer_idx}.hook_mlp_out",
+        ]:
+            model.add_hook(
+                name=hook_name,
+                hook=layer_output_hook,
+            )
+        
+        # Add hook residual post
+        model.add_hook(
+            name=f"blocks.{model.cfg.n_layers -1}.hook_resid_post",
+            hook=input_activation_editor,
+        )
+        return model
+    
+def direct_path_patching_up_to(
+        model: Any,
+        receiver_hook: Tuple,
+        important_nodes: Tensor,
+        metric: Callable[[Tensor,Dataset], float],
+        dataset: Any,
+        orig_data: Tensor,
+        cur_position: int,
+        new_data: Tensor,
+        orig_positions,
+        new_positions,
+        orig_cache=None,
+        new_cache=None, 
+
+):
+    '''
+    Converts important nodes into the receivers-to-senders format.
+    Args:
+    
+        model(Any): The model to path patch 
+        receiver_hook(Tuple): The receiver hook 
+        important_nodes(Tensor): Important nodes to convert to a specified format
+        metric(Callable[[Tensor, Dataset], float]): Metrics of path patching
+    
+        dataset(Any): A dataset for the experiment
+        orig_data(Tensor): The original data point
+    :param cur_position: Description
+    :type cur_position: int
+    :param new_data: Description
+    :type new_data: Tensor
+    :param orig_positions: Description
+    :param new_positions: Description
+    :param orig_cache: Description
+    :param new_cache: Description
+    '''

@@ -44,6 +44,30 @@ def detect_architecture(model):
     if 'mistral' in model_class_lower or 'mixtral' in model_class_lower:
         return 'mistral'
     
+    # BART
+    if 'bart' in model_class_lower:
+        return 'bart'
+    
+    # Claude
+    if 'claude' in model_class_lower:
+        return 'claude'
+    
+    # Falcon 
+    if 'falcon' in model_class_lower:
+        return 'falcon'
+    
+    # MPT 
+    if 'mpt' in model_class_lower:
+        return 'mpt'
+    
+    # Bloom
+    if 'bloom' in model_class_lower:
+        return 'bloom'
+    
+    # OPT
+    if 'opt' in model_class_lower:
+        return 'opt'
+    
     # ======= Vision Transformers =======
     # ViT
     if 'vit' in model_class_lower or 'visiontransformer' in model_class_lower:
@@ -57,7 +81,7 @@ def detect_architecture(model):
     if 'swin' in model_class_lower:
         return 'swin'
     
-    # ======= Multimodal =======
+    # ======= Multimodal Models =======
 
     # CLIP
     if 'clip' in model_class_lower:
@@ -78,6 +102,22 @@ def detect_architecture(model):
     # ALIGN
     if 'align' in model_class_lower:
         return 'align'
+    
+    # Flamingo
+    if 'flamingo' in model_class_lower:
+        return 'flamingo'
+    
+    # GPT-4V 
+    if 'gpt4v' or 'gpt-4v' in model_class_lower:
+        return 'gpt4v'
+
+    # Gemini
+    if 'gemini' in model_class_lower:
+        return 'gemini'
+
+    # CoCa
+    if 'coca' in model_class_lower:
+        return 'coca' 
     
     # ======= Generative Models =======
 
@@ -102,6 +142,15 @@ def detect_architecture(model):
     # Normalizing Flows
     if 'flow' or 'normalizingflow' in model_class_lower:
         return 'normalizing_flow'
+    
+    # DALL-E
+    if 'dalle' in model_class_lower:
+        return 'dalle'
+    
+    if 'imagen' in model_class_lower:
+        return 'imagen'
+    
+
     
     # ======= Traditional Convolutional Neural Networks (CNNs) =======
 
@@ -142,7 +191,7 @@ def detect_architecture(model):
     # ======= Specialised Architectures =======
     
     # Graphe Neural Networks
-    if 'gnn' in model_class_lower:
+    if 'gnn' or'graph' in model_class_lower:
         if 'graphormer' in model_class_lower:
             return 'graphormer'
         elif 'gcn' in model_class_lower:

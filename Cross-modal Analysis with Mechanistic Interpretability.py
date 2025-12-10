@@ -776,7 +776,7 @@ fig.show()
 
 
 # %%
-# Cosine similarities for embeddings between each corresponding image and text embeddings (inter-modality)
+# Cosine similarities between corresponding image-text pair embeddings (inter-modality)
 cosine_similarities = t.cosine_similarity(image_embeds, text_embeds, dim = 1)
 print(f"Cosine similarities in the embedding space: {cosine_similarities}")
 print(f"Min cosine similarity: {cosine_similarities.min()}")
