@@ -13,7 +13,8 @@ from vit_prisma.prisma_tools import activation_cache
 import warnings
 from vit_prisma.utils.experiments import get_act_hook
 from vit_prisma.utils.detect_architectures import detect_architecture
-
+from tqdm import tqdm
+from copy import deepcopy
 def calculate_logits_to_ave_logit_diff(
         logits: Tensor,
         test_case: dict,
@@ -522,7 +523,7 @@ def direct_path_patching_up_to(
         metric: Callable[[Tensor,Dataset], float],
         dataset: Any,
         orig_data: Tensor,
-        cur_position: int,
+        cur_position,
         new_data: Tensor,
         orig_positions,
         new_positions,
@@ -541,12 +542,105 @@ def direct_path_patching_up_to(
     
         dataset(Any): A dataset for the experiment
         orig_data(Tensor): The original data point
-    :param cur_position: Description
-    :type cur_position: int
-    :param new_data: Description
-    :type new_data: Tensor
-    :param orig_positions: Description
-    :param new_positions: Description
-    :param orig_cache: Description
-    :param new_cache: Description
+        cur_position : The current position in the data point 
+        new_data (Tensor): A Tensor of the new data point
+        orig_positions: Original positions
+        new_positions: New positions
+        orig_cache: The original cache
+        new_cache: The new cache
+    Returns:
+
     '''
+    # Construct the arguments
+    base_initial_senders = []
+    base_receivers_to_senders = {}
+
+    for receiver in important_nodes:
+        hook = get_hook_tuple(model, receiver.layer, receiver.head, input=True) # Get hook tuple in important nodes
+
+        if hook == receiver_hook:
+            assert(
+                len(receiver.children) == 0
+            ), "Receiver hook should not have children; we're going to find them here"
+
+        elif len(receiver.children) == 0:
+            continue
+
+        else: # patch, through the paths
+            for sender_child, _, comp in receiver.children:
+                if comp in ["v","k","q"]:
+                    qkv_hook = get_hook_tuple(model, receiver.layer, receiver.head, comp)
+                    if qkv_hook not in base_receivers_to_senders:
+                        base_receivers_to_senders[qkv_hook] = []
+                    warnings.warn(
+                        "Need finer grained position control: this will be the"
+                    )
+                    base_receivers_to_senders[qkv_hook].append(
+                        (sender_child.layer, sender_child.head, sender_child.position
+                         )
+                    )
+                else:
+                    if hook not in base_receivers_to_senders:
+                        base_receivers_to_senders[hook] = []
+                    base_receivers_to_senders[hook].append(
+                        (sender_child.layer, sender_child.head, sender_child.position)
+                    )
+
+    receiver_hook_layer = int(receiver_hook[0].split(".")[1]) # Obtain the layer of receiver hook
+    model.reset_hooks() # Reset hooks
+    attn_layer_shape = receiver_hook_layer + (1 if receiver_hook[1] is None else 0) #  Assign the attention layer shape as the receiver hook layer plus one if the first dimension of the hook is None, else 0
+    mlp_layer_shape = receiver_hook_layer
+    attn_results = torch.zeros(attn_layer_shape,model.cfg.n_heads) # Create a tensor filled with 0 with the shape of attention layer as the first dimension and the number of heads as the second dimension
+    mlp_results = torch.zeros((mlp_layer_shape),1)
+
+    for l in tqdm(range(attn_layer_shape)): # Tracking progress
+        for h in range(model.cfg.n_heads):
+            senders = deepcopy(base_initial_senders)
+            senders.append((l,h))
+            receiver_to_senders = deepcopy(base_receivers_to_senders)
+            if receiver_hook not in receiver_to_senders:
+                receiver_to_senders[receiver_hook] = []
+            receiver_to_senders[receiver_hook].append((l,h,cur_position))
+
+            model = direct_path_patching(
+                    model=model,
+                    orig_data=orig_data,
+                    new_data=new_data,
+                    initial_receivers_to_senders=[(receiver_hook,(l,h,cur_position))],
+                    receivers_to_senders=receiver_to_senders,
+                    orig_positions=orig_positions,
+                    new_positions=new_positions,
+                    orig_cache=orig_cache,
+                    new_cache=new_cache
+            )
+            attn_results[l,h] = metric(model,dataset)
+            model.reset_hooks()
+
+            # mlp
+            if l < mlp_layer_shape:
+                senders = deepcopy(base_initial_senders)
+                senders.append((l,None))
+                receiver_to_senders = deepcopy(base_receivers_to_senders)
+
+                if receiver_hook not in receiver_to_senders:
+                    receiver_to_senders[receiver_hook] = []
+                receiver_to_senders[receiver_hook].append((l,None,cur_position))
+                cur_logits = direct_path_patching(
+                    model=model,
+                    orig_data=orig_data,
+                    new_data=new_data,
+                    initial_receivers_to_senders=[(receiver_hook,(l, None, cur_position))],
+                    receivers_to_senders=receiver_to_senders,
+                    orig_positions=orig_positions,
+                    new_positions=new_positions,
+                    orig_cache=orig_cache,
+                    new_cache=new_cache
+                )
+                mlp_results[1] = metric(cur_logits,dataset)
+                model.reset_hooks()
+
+            return attn_results.cpu().detach(), mlp_results.cpu().detach()
+        
+
+
+
