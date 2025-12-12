@@ -8,9 +8,31 @@ Inspired by TransformerLens. Some functions have been adapted from the Transform
 For more information on TransformerLens, visit: https://github.com/neelnanda-io/TransformerLens
 """
 
-from typing import List, Union, Dict, Callable, Tuple, Optional, Any
+from typing import List, Union, Dict, Callable, Tuple, Optional, Any, Sequence
 from vit_prisma.prisma_tools.lens_handle import LensHandle
 import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import numpy as np
+import einops 
+from tqdm import tqdm
+import random 
+import time
+from pathlib import Path
+import pickle
+import os
+import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.io as pio
+import plotly.graph_objects as go
+from torch.utils.data import DataLoader
+from functools import *
+import pandas as pd
+import gc
+import collections
+import copy
+import itertools
+from vit_prisma.prisma_tools.activation_cache import ActivationCache 
 
 
 class HookPoint(nn.Module):
@@ -110,4 +132,82 @@ class HookPoint(nn.Module):
         # If it doesn't have this form, raises an error -
         split_name = self.name.split(".")
         return int(split_name[1])
+
+# Define type aliases
+NamesFilter = Optional[Union[Callable[[str],bool], Sequence[str]]]
+
+
+class HookedRootModule(nn.Module):
+    '''
+    A class building on nn.Module to interface nicely with hook points.
+    Adds various nice utilities, most notably run_with_hooks to run the model with temporary hooks, and run_with_cache to run the model on some input and return a cache of all activations. 
+    
+    '''
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.is_caching = False
+    
+    def set_up(self):
+        '''
+        Adds a parameter to each module given its name and builds a dictionary mapping a module name to the module.
+        Setup function needs to run in __init__ after defining all.
+        
+        '''
+        self.mod_dict = {}
+        self.hook_dict = {}
+
+        for name, module in self.named_modules(): # Loop through name and module in named modules
+            module.name = name
+            self.mod_dict[name] = module # Assign value of the name key to module 
+            if "HookPoint" in str(type(module)): 
+                self.hook_dict[name] = module # If HookPoint is a module, assign the value of name to module
+            
+    def hook_points(self):
+        return self.hook_dict.values() # Return the values of hook dictionary
+    
+    def remove_all_hook_fns(self, direction="both"):
+        '''
+        Removes all hook functions.
+        '''
+        for hp in self.hook_points():
+            hp.remove_hooks() # Remove all hook points
+    
+    def clear_contexts(self):
+        '''
+        Clear contexts in hook points.
+        
+        '''
+        for hp in self.hook_points():
+            hp.clear_context()
+    
+    def reset_hooks(self, clear_contexts=True, direction="both"):
+        '''
+        Reset hooks. 
+        '''
+        if clear_contexts:
+            self.clear_contexts()
+        self.remove_all_hook_fns(direction)
+        self.is_caching = False
+    
+    def add_hook(self, name, hook, dir="fwd"):
+        '''
+        Add hooks.
+        '''
+        if type(name) == str:
+            self.mod_dict[name].add_hook(hook, dir=dir) # Add hook in the forward pass to the name key if name is a string
+        else:
+            # Otherwise, name is a Boolean function on names
+            for hook_name, hp in self.hook_dict.items():
+                if name(hook_name):
+                    hp.add_hook(hook,dir=dir)
+    
+    def run_with_hooks(
+            self, 
+            *model_args,
+            fwd_hooks=[],
+            bwd_hooks=[],
+    ):
+
+        
+    
 

@@ -15,6 +15,7 @@ from vit_prisma.utils.experiments import get_act_hook
 from vit_prisma.utils.detect_architectures import detect_architecture
 from tqdm import tqdm
 from copy import deepcopy
+
 def calculate_logits_to_ave_logit_diff(
         logits: Tensor,
         test_case: dict,
@@ -24,6 +25,7 @@ def calculate_logits_to_ave_logit_diff(
     Returns the average logit difference between the correct and distractor prompts.
     Args:
         logits(Tensor): Logits tensor of shape (batch, seq, d_model).
+        test_case(dict): A dictionary of a test case.
         per_prompt (Bool): If True, returns the logit difference per prompt.
     Returns:
         Average logit difference tensor of shape (batch,).
@@ -231,7 +233,7 @@ def path_patching(
                 if have_internal_interactions and hook_name in receiver_hook_names:
                     continue # Continue if there are internal interactions and hook name is in receiver_hook_names
 
-                hook = get_act_hook(
+                hook = get_act_hook( # Get activation hook
                     patch_all,
                     alt_act=target_cache[hook_name],
                     idx=head_idx,
@@ -240,7 +242,7 @@ def path_patching(
                     )
                 model.add_hook(hook_name, hook)
             
-            if freeze_mlps:
+            if freeze_mlps: # If freeze MLPs
                 hook_name = f"blocks.{layer}.hook_mlp_out"
                 hook = get_act_hook(
                     patch_all,
@@ -252,7 +254,7 @@ def path_patching(
                 model.add_hook(hook_name, hook)
 
         for hook in extra_hooks:
-            model.add_hook(*hook) # Adding hook in extra_hooks to model
+            model.add_hook(*hook) # Adding hook in extra hooks to model
 
 
         # These hooks will overwrite the freezing, for the sender heads
@@ -295,38 +297,12 @@ def path_patching(
             hooks.append((hook_name, hook)) # Append hook name and hook to hooks
         
         model.reset_hooks()
-        if return_hooks:
+        if return_hooks: # If return hooks
             return hooks
         else:
             for hook_name, hook in hooks:
                 model.add_hook(hook_name, hook)
             return model
-def input_activation_editor(
-        z,
-        hook, 
-        receivers_to_senders: Dict[Tuple[str, Optional[int]],List[Tuple[int, Optional[int], str]]],
-        initial_receivers_to_senders: List[Tuple[Tuple[str, Optional[int]], Tuple[int, Optional[int], str]]],
-        head_idx = None,
-        
-):
-    '''
-    Edits input activations.
-    '''
-    new_z = z.clone() # Clone z
-    N = z.shape[0] # Assign N to the batch dimension
-    hook_name = hook.ctx["hook_name"]
-    assert(
-        len(receivers_to_senders[(hook_name,head_idx)]) >0
-    ), f"No senders for {hook_name, head_idx}, this should not be attached."
-
-    for sender_layer_idx, sender_head_idx, sender_head_pos in receivers_to_senders[(hook_name,head_idx)]:
-        sender_hook_name, sender_head_idx = get_hook_tuple(model, sender_head_idx,sender_head_idx)
-
-        if (
-            (hook_name,head_idx),
-            (sender_layer_idx,sender_head_idx, sender_head_pos),
-        ) in initial_receivers_to_senders:
-            cache_to_use = new_cache
 
 
 def direct_path_patching(
@@ -405,7 +381,7 @@ def direct_path_patching(
         N = z.shape[0] # Assign N to the batch dimension
         hook_name = hook.ctx["hook_name"]
         assert(
-            len(receivers_to_senders[(hook_name,head_idx)]) >0
+            len(receivers_to_senders[(hook_name,head_idx)]) > 0
         ), f"No senders for {hook_name, head_idx}, this should not be attached."
 
         for sender_layer_idx, sender_head_idx, sender_head_pos in receivers_to_senders[(hook_name,head_idx)]:
@@ -431,7 +407,7 @@ def direct_path_patching(
                     - orig_cache[sender_hook_name][
                         torch.arange(N), positions_to_use[sender_head_pos]
                     ]
-                )
+                ) # Assign sender value to cache we are going to use subtracted by the original cache 
             else:
                 sender_value = (
                     cache_to_use[sender_hook_name][
@@ -466,7 +442,7 @@ def direct_path_patching(
 
                 new_z[
                     torch.arange(N), positions_to_use[sender_head_pos], head_idx
-                ] += sender_value
+                ] += sender_value # Adding sender value to new z
 
             return new_z
     # Save and overwrite outputs of attention and MLP layers
@@ -474,12 +450,12 @@ def direct_path_patching(
         '''
         Save and overwrite outputs of attention and MLP layers.
         '''
-        hook_name = hook.ctx["hook_name"]
-        hook.ctx["model"].cahce[hook_name] = z.clone()
+        hook_name = hook.ctx["hook_name"] # Obtain hook name from ctx
+        hook.ctx["model"].cache[hook_name] = z.clone() # Assign cache to hook name
         assert (
             z.shape == orig_cache[hook_name].shape
         ), f"Shape mismatch between {z.shape} and {orig_cache[hook_name].shape}"
-        z[:] = orig_cache[hook_name]
+        z[:] = orig_cache[hook_name] # Populate z with original cache
 
         return z
     
@@ -489,7 +465,7 @@ def direct_path_patching(
             for letter in ["q","k","v"]:
                 hook_name = f"blocks.{layer_idx}.attn.hook_{letter}_input"
                 if (hook_name, head_idx) in receivers_to_senders:
-                    model.add_hook(
+                    model.add_hook( # Add hook
                         name=hook_name,
                         hook=partial(input_activation_editor, head_idx=head_idx), # Create a new function
 
@@ -567,24 +543,24 @@ def direct_path_patching_up_to(
             continue
 
         else: # patch, through the paths
-            for sender_child, _, comp in receiver.children:
+            for sender_child, _, comp in receiver.children: # Loop through sender child and computation in children of receiver
                 if comp in ["v","k","q"]:
-                    qkv_hook = get_hook_tuple(model, receiver.layer, receiver.head, comp)
+                    qkv_hook = get_hook_tuple(model, receiver.layer, receiver.head, comp) 
                     if qkv_hook not in base_receivers_to_senders:
-                        base_receivers_to_senders[qkv_hook] = []
+                        base_receivers_to_senders[qkv_hook] = [] # Leave qkv hook an empty list if qkv hook not in the dictionary 
                     warnings.warn(
                         "Need finer grained position control: this will be the"
                     )
                     base_receivers_to_senders[qkv_hook].append(
                         (sender_child.layer, sender_child.head, sender_child.position
-                         )
+                         ) # Append the values of layer, head and position from sender child to the qkv hook key 
                     )
                 else:
                     if hook not in base_receivers_to_senders:
-                        base_receivers_to_senders[hook] = []
+                        base_receivers_to_senders[hook] = [] # Leave hook an empty list if hook not in the dictionary 
                     base_receivers_to_senders[hook].append(
                         (sender_child.layer, sender_child.head, sender_child.position)
-                    )
+                    ) # Append the values of layer, head and position from sender child to the hook key
 
     receiver_hook_layer = int(receiver_hook[0].split(".")[1]) # Obtain the layer of receiver hook
     model.reset_hooks() # Reset hooks
@@ -595,14 +571,14 @@ def direct_path_patching_up_to(
 
     for l in tqdm(range(attn_layer_shape)): # Tracking progress
         for h in range(model.cfg.n_heads):
-            senders = deepcopy(base_initial_senders)
-            senders.append((l,h))
-            receiver_to_senders = deepcopy(base_receivers_to_senders)
+            senders = deepcopy(base_initial_senders) # Assign senders to a deep copy of base initial senders 
+            senders.append((l,h)) # Append a tuple of layer and head to senders
+            receiver_to_senders = deepcopy(base_receivers_to_senders) # Assign receiver to senders to a deep copy og base receivers to senders
             if receiver_hook not in receiver_to_senders:
-                receiver_to_senders[receiver_hook] = []
-            receiver_to_senders[receiver_hook].append((l,h,cur_position))
+                receiver_to_senders[receiver_hook] = [] # Assign receiver hook to an empty list in receiver hook not in the dictionary
+            receiver_to_senders[receiver_hook].append((l,h,cur_position)) # Append the values of layer, head and current position as a tuple to the receiver hook key
 
-            model = direct_path_patching(
+            model = direct_path_patching( # Directly path patch for a model
                     model=model,
                     orig_data=orig_data,
                     new_data=new_data,
@@ -613,19 +589,19 @@ def direct_path_patching_up_to(
                     orig_cache=orig_cache,
                     new_cache=new_cache
             )
-            attn_results[l,h] = metric(model,dataset)
+            attn_results[l,h] = metric(model,dataset) # Assign attention results for a specific layer and head 
             model.reset_hooks()
 
             # mlp
             if l < mlp_layer_shape:
-                senders = deepcopy(base_initial_senders)
-                senders.append((l,None))
-                receiver_to_senders = deepcopy(base_receivers_to_senders)
+                senders = deepcopy(base_initial_senders) # Assign senders to a deep copy of base initial senders 
+                senders.append((l,None)) # Append a tuple of layer and None to senders
+                receiver_to_senders = deepcopy(base_receivers_to_senders) 
 
                 if receiver_hook not in receiver_to_senders:
                     receiver_to_senders[receiver_hook] = []
-                receiver_to_senders[receiver_hook].append((l,None,cur_position))
-                cur_logits = direct_path_patching(
+                receiver_to_senders[receiver_hook].append((l,None,cur_position)) # Append the values of l, None and current position to the receiver hook key
+                cur_logits = direct_path_patching( # Obtain current logits after path patching
                     model=model,
                     orig_data=orig_data,
                     new_data=new_data,
@@ -636,7 +612,7 @@ def direct_path_patching_up_to(
                     orig_cache=orig_cache,
                     new_cache=new_cache
                 )
-                mlp_results[1] = metric(cur_logits,dataset)
+                mlp_results[1] = metric(cur_logits,dataset) # Assign mlp results for the second layer 
                 model.reset_hooks()
 
             return attn_results.cpu().detach(), mlp_results.cpu().detach()
