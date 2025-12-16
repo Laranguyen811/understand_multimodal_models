@@ -8,8 +8,10 @@ Inspired by TransformerLens. Some functions have been adapted from the Transform
 For more information on TransformerLens, visit: https://github.com/neelnanda-io/TransformerLens
 """
 
-from typing import List, Union, Dict, Callable, Tuple, Optional, Any, Sequence
+from typing import List, Union, Dict, Callable, Tuple, Optional, Any, Sequence, Literal
 from vit_prisma.prisma_tools.lens_handle import LensHandle
+import torch
+from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -33,6 +35,7 @@ import collections
 import copy
 import itertools
 from vit_prisma.prisma_tools.activation_cache import ActivationCache 
+import logging
 
 
 class HookPoint(nn.Module):
@@ -47,9 +50,9 @@ class HookPoint(nn.Module):
         self.fwd_hooks: List[LensHandle] = []
         self.bwd_hooks: List[LensHandle] = []
 
-        self.ctx = {} # what is this?
+        self.ctx = {} # Acts as a communication channel between the forward and backward passes of the custom autogra fnction
 
-        self.name = None
+        self.name: str
     
     def add_perma_hook(self, hook, dir="fwd") -> None:
         self.add_hook(hook, dir, is_permanent=True)
@@ -204,9 +207,162 @@ class HookedRootModule(nn.Module):
     def run_with_hooks(
             self, 
             *model_args,
-            fwd_hooks=[],
-            bwd_hooks=[],
-    ):
+            fwd_hooks:List=[],
+            bwd_hooks:List=[],
+            reset_hooks_start:bool = True,
+            reset_hooks_end:bool = True,
+            clear_contexts:bool=False,
+            **model_kwargs,
+    )-> Tensor:
+        '''
+        Run cache with hooks.If we want to use backward hooks, we need to set reset_hooks_end to be False.
+        Args:
+            model_args and model_kwargs: All positional arguments and keyword arguments not otherwise captured are inputs to the model.
+            fwd_hooks(List): A list of (name, hook), where name is either the name of a hook point or a Boolean funciton on hook names.
+            Hook is the function to add to that hook point, or the hook whose names evaluate to True respectively. 
+            reset_hooks_start (bool): A boolean of whether all prior hooks are removed at the start or not.
+            reset_hooks_end (bool): A boolean of whether all prior hooks are removed at the end or not. 
+            clear_contexts (bool): A boolean if whether hook contexts are cleared whenever hooks are reset.
+        Returns:
+            Tensor
+
+        '''
+        if reset_hooks_start: # If prior hooks are reset at the start
+            if self.is_caching: # If we are caching
+                logging.warning("Caching is on, but hooks are being reset") # Warning
+            self.reset_hooks(clear_contexts) # Clear context
+        
+        for name, hook in fwd_hooks: # Loop through name and hook in forward hooks
+            if type(name) == str: # If name type is string
+                self.mod_dict[name].add_hook(hook, dir="fwd") # Add hook to the forward pass of the module dictionary of the given name
+            else: # Otherwise, name is a Boolean function on names
+                for hook_name, hp in self.hook_dict: # Loop through hook name and hook point in hook dictionary
+                    if name(hook_name): # If hook name is in name
+                        hp.add_hook(hook,dir="bwd") # Add hook to the hook points in the backward pass
+
+        out = self.forward(*model_args, **model_kwargs) 
+        if reset_hooks_end: # If prior hooks are reset at the end
+            if len(bwd_hooks) > 0:
+                logging.warning(
+                    "WARNING: Hooks were reset at the end of run_with_hooks while backward hooks were set. This removes the backward hooks before a backward pass can occur."
+                )
+            self.reset_hooks(clear_contexts) 
+        return out  
+    def add_caching_hooks(
+            self,
+            names_filter:Optional[Any]=None,
+            incl_bwd:bool=False,
+            device:Optional[str]=None,
+            remove_batch_dim:bool=False,
+            cache:Optional[dict]=None,
+            verbose=False,
+    )-> Dict:
+        '''
+        Adds hooks to the model to cache activations. It does not actually run the model to get activations, that must be done separately.
+        Args:
+            names_filter(NamesFilter, optional): a names filter of which activation to cache. Can be a list of strings (hook names) or a filter function mapping
+            hook names to booleans. Defaults to lambda name: True.
+            incl_bwd (bool, optional): A boolean of whether to also use backwards hooks. Defaults to False.
+            device (__type__, optional): The device to store on. Defaults to CUDA if available else CPU.
+            remove_batch_dim(bool, optional): A boolean of whether to remove the batch dimension (only works for batch size of 1). Defaults to False.
+            cache (Optional[dict], optional): Cache to store activations in, a new dict is created by default. Defaults to None. 
+        Returns:
+            Cache (dict): Cache where activations will be stored. 
+
+        '''
+        if remove_batch_dim: # If we remove the batch dimension
+            logging.warning(
+                "Remove batch dim is caching hooks is deprecated. Use the Cache object or run_with_cache flags instead."
+            )
+        if device is None: # If no device
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        if cache is None: # If no cache
+            cache = {}
+        if names_filter is None: # If no names filter
+            names_filter = lambda name: True # Set lambda: name to True
+        elif type(names_filter) == str: # If type of names_filter is string
+            names_filter = lambda name: name == names_filter # names filter will be name given that name is names filter
+        elif type(names_filter) == list: # If type of names_filter is list
+            names_filter = lambda name: name in names_filter # names filter will be name for name in names filter 
+        
+        self.is_caching = True # We are caching
+
+        def save_hook(
+                    tensor: Tensor,
+                    hook: HookPoint,
+                    ) -> None:
+            '''
+            Save hooks.
+            Args:
+                tensor(Tensor): A tensor.
+                hook (Tensor): A tensor of hook.
+                verbose(bool): A boolean of whether to print certain statements or not.
+            Returns:
+                None
+            '''
+            if verbose:
+                print("Saving  ", hook.name)
+            if remove_batch_dim: 
+                cache[hook.name] = tensor.detach().to(device).clone()[0] # Assign the value of name of hook in cache to a clone of the first dimension of tensor (Tensor)
+            else:
+                cache[hook.name] = tensor.detach().to(device).clone() # Assign the value of name of hook in cache to a clone of tensor
+
+        def save_hook_back(self,
+                           tensor: Tensor,
+                           hook: HookPoint) -> None:
+            '''
+            Save hooks in the backward pass.
+            Args:
+                tensor(Tensor): A tensor.
+                hook (Tensor): A tensor of hook.
+                verbose(bool): A boolean of whether to print certain statements or not.
+            Returns:
+                None
+            '''
+            if verbose:
+                print("Saving ", hook.name)
+                if remove_batch_dim:
+                    cache[hook.name + "_grad"] = tensor[0].detach().clone().to(device)[0] # If we remove batch dimension, the value of hook name + "_grad" is assigned to a clone of the gradient of tensor
+                else: 
+                    cache[hook.name + "_grad"] = tensor[0].detach().clone().to(device) # Otherwise, the value of hook name + "_grad" is assigned to the first dimension of a clone of a tensor
+
+        for name, hp in self.hook_dict.items(): # Loop through name and hook point in hook dictionary
+            if names_filter(name): # If filter by name
+                hp.add_hook(save_hook,"fwd") # Add hooks saved in the forward pass
+                if incl_bwd: # If include backward pass
+                    hp.add_hook(save_hook_back,"bwd") # Add hooks saved in the backward pass 
+
+        return cache
+    
+    #def run_with_cache(
+    #        self, 
+    #        *model_args,
+    #        names_filter:NamesFilter=None,
+    #        device:Optional[str]=None,
+    #        remove_batch_dim:bool=False,
+    #        incl_bwd:bool=False,
+    #        reset_hooks_end:bool=True,
+    #        reset_hooks_start:bool=True,
+    #        clear_context:bool=False,
+    #        return_cache_object:bool=True,
+    #        **model_kwargs,
+    #):
+    #    '''
+    #    Runs the model and returns model output and a Cache object.
+    #    Args:
+    #        model_args and model_kwargs: All positional arguments and keyword arguments not otherwise captured are inputs to the model. 
+    #        names_filter(None or str or [str] or fn:str->bool): A filter for which activations to cache. Defaults to None, meaning cache everything.
+    #        device (str or torch.Device): The device to cache activations on, defaults to model device. This must be set if the mode does not have a model.cfg.device attribute. 
+    #        remove_batch_dim(bool): A boolean of whether to remove the batch dimension or not (Only works for batch size of 1).
+    #        incl_bwd(bool) 
+    #    '''
+
+
+
+        
+
+
+
 
         
     
