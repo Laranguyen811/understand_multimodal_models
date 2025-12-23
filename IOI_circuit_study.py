@@ -48,7 +48,8 @@ from fancy_einsum import einsum
 import random
 import plotly.express as px
 import pandas as pd
-
+from vit_prisma.utils.detect_architectures import detect_architecture
+from vit_prisma.utils.patching_utils import path_patching, direct_path_patching, direct_path_patching_up_to
 
 # %%
 # Loading the model 
@@ -141,6 +142,7 @@ with t.no_grad():
     probs = logits.softmax(dim=-1)
 print(f"Logit values: {logits}")
 print (f"Probabilities: {probs}")
+print(f"Type of log probabilities:{type(probs)}")
 correct_prob = np.round(probs[ioi_test_case['correct_idx']].item(),3)
 distractor_prob = np.round(probs[ioi_test_case['distractor_idx']].item(),3)
 print(f"Correct IOI probability: {correct_prob}")
