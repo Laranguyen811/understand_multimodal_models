@@ -49,32 +49,32 @@ class ExperimentMetric:
         self.daytaet = dataset # Dataset to run the metric on.
         self.shape = None # Shape of the metric output.
 
-        def set_baseline(self, model: nn.Module):
-            '''
-            Sets the baseline value for relative metrics.
-            Args:
-                model: Model to run the metric on.
-            Returns:
-                None
-            '''
-            model.reset_hooks()
-            base_metric = self.metric(model,self.dataset)
-            self.shape = base_metric.shape
+    def set_baseline(self, model: nn.Module):
+        '''
+        Sets the baseline value for relative metrics.
+        Args:
+            model: Model to run the metric on.
+        Returns:
+            None
+        '''
+        model.reset_hooks()
+        base_metric = self.metric(model,self.dataset)
+        self.shape = base_metric.shape
         
-        def compute_metric(self,model):
-            assert (self.baseline is not None) or not (
-                self.relative_metric
-            ), "Baseline must be set for relative mean."
-            out = self.metric(model,self.dataset)
-            if self.scalar_metric:
-                assert (
-                    len(out.shape) == 0
-                ), "Output of scalar metric has shape of length > 0."
+    def compute_metric(self,model):
+        assert (self.baseline is not None) or not (
+            self.relative_metric
+        ), "Baseline must be set for relative mean."
+        out = self.metric(model,self.dataset)
+        if self.scalar_metric:
+            assert (
+                len(out.shape) == 0
+            ), "Output of scalar metric has shape of length > 0."
 
-            self.shape = out.shape
-            if self.relative_metric:
-                out = out / self.baseline - 1
-            return out
+        self.shape = out.shape
+        if self.relative_metric:
+            out = out / self.baseline - 1
+        return out
 
 class ExperimentConfig:
     def __init__(
@@ -123,12 +123,339 @@ class ExperimentConfig:
             model_cfg.beg_layer, model_cfg.end_layer = self.layers
         return model_cfg
 
+    def copy(self):
+        '''
+        Copies the experiment configuration.
+        Returns:
+            ExperimentConfig
+        '''
+        copy = self.__class__()
+        for name, atr in vars(self).items():
+            if type(atr) == list:
+                setattr(copy, name, atr.copy()) # Set list attributes to a copy of the list.
+            else:
+                setattr(copy, name, atr) # Set other attributes to the same value.
+        return copy
     
+    def __str__(self):
+        '''
+        Returns a human-readable string representation of the experiment configuration.
+        Returns:
+            str
+        '''
+        str_print = f"--- {self.__class__.__name__} ---\n" # String print of the class.
+        for name, atr in vars(self).items():
+            attr = getattr(self, name) # Get attribute value.
+            attr_str = f" * {name}:" # String representation of the attribute.
+            
+            if name == "mean_dataset" and self.compute_means and attr is not None:
+                attr_str += get_sample_from_dataset(self.mean_dataset)
+            elif name =="dataset" and attr is not None:
+                attr_str += get_sample_from_dataset(self.dataset)
+            else:
+                atr_str += str(attr)
+            atr_str += "\n"
+            str_print += atr_str
+        return str_print
+
+    def __repr__(self) -> str:
+        '''
+        Returns an official string representation of the experiment configuration.
+        '''
+        return self.__str__()
+    
+def zero_fn(z: Tensor,hk):
+    '''
+    Returns zero tensor of the same shape as z.
+    Args:
+        z: Input tensor.
+        hk: Hook context.
+    Returns:
+        Tensor
+    '''
+    return torch.zeros(z.shape)
+
+def cst_fn(z: Tensor, cst: Tensor, hk):
+    '''
+    Returns a constant tensor of the same shape as z.
+    Args:
+        z: Input tensor.
+        cst: Constant tensor.
+        hk: Hook context.
+    Returns:
+        Tensor
+    '''
+    return cst[:z.shape[0], :z.shape[1], ...] # Match the shape of z.
+
+def neg_fn(z: Tensor, hk):
+    '''
+    Returns the negative of the input tensor z.
+    Args:
+        z: Input tensor.
+        hk: Hook context.
+    Returns:
+        Tensor
+    '''
+    return -z
+
+class AblationConfig(ExperimentConfig):
+    '''
+    Class to handle ablation experiment configurations.
+    '''
+    def __init__(
+            self,
+            abl_type: str = "zero",
+            mean_dataset: Any = None,
+            compute_means: bool = False,
+            batch_size: int = None,
+            max_seq_len: int = None,
+            abl_fn: Callable[[Tensor,Tensor,HookPoint], Tensor] = None,
+            **kwargs,
+    ):
+        super().__init__(**kwargs)
+        assert abl_type in ["mean","zero","neg","random","custom"] # Assert valid ablation types.
+        assert not (
+            abl_type == "custom" and abl_fn is None
+        ), "You must specify your ablation function"
+        assert not (
+            abl_type == "custom" and abl_fn is None
+        ), "You must specify your ablation function" # Ensures custom ablation function is provided.
+        assert not (abl_type == "random" and self.nb_metric_iteration < 0) # Ensures ablation type is not random when nb_metric_iteration is negative.
+        assert not (abl_type != "random" and self.nb_metric_iteration != 1) # Ensures nb_metric_iteration is not 1 and ablation type is not random.
+        assert not ( abl_type =="random" and not (cache_means)), "You must cache means for random ablation." # Ensures means are cached for random ablation.
+        assert not (abl_type == "mean" and self.head_circuit in ["attn", "attn_scores"]), "Random ablation is not implemented for attention circuit" # Ensures random ablation is not used for attention circuit.
+
+        if abl_type == "random" and (batch_size is None or max_seq_len is None):
+            warnings.warn( "WARNINGS: Random and no shape specified for ablation. Will infer from the dataset. Use 'batch_size' and 'max_seq_len'to specify.")
+        if abl_type == 'random' and self.nb_metric_iteration < 5:
+            warnings.warn("WARNINGS: Random ablation with less than 5 iterations may lead to high variance in results.")
+        
+        self.abl_type = abl_type # Type of ablation.
+        self.mean_dataset = mean_dataset # Dataset to compute means.
+        self.compute_means = compute_means # Whether to compute means.
+        self.batch_size = batch_size # Batch size for random ablation.
+        self.max_seq_len = max_seq_len # Maximum sequence length for random ablation.
+
+        if abl_type == "zero":
+            self.abl_fn = zero_fn
+        if abl_type == "neg":
+            self.abl_fn = neg_fn
+        if abl_type == "mean":
+            self.abl_fn = cst_fn
+        if abl_type == "custom" and abl_fn is not None:
+            self.abl_fn = cst_fn # Can specify arbitrary ablation functions for custom ablation.
+
+class PatchingConfig(ExperimentConfig):
+    '''
+    Configurations for patching experiments from the source dataset to the target dataset.
+    '''
+    def __init__(
+            self, 
+            source_dataset: List[str] = None,
+            target_dataset: List[str] = None,
+            patch_fn : Callable[[Tensor,Tensor,HookPoint], Tensor] = None,
+            cache_act : bool = True,
+            **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.source_dataset = source_dataset # Source dataset for patching.
+        self.target_dataset = target_dataset # Target dataset for patching.
+        self.patch_fn = patch_fn # Patching function.
+        self.cache_act = cache_act # Whether to cache activations.
+        if patch_fn is None:
+            self.patch_fn = cst_fn # Default patching function is constant function.
+
+class Experiment:
+    '''
+    A virtual class to interactively apply hooks to layers or heads. The children class only needs to define the method get_hook.
+    '''   
+    def __init__(
+            self,
+            model: nn.Module,
+            experiment_config: ExperimentConfig,
+            experiment_metrics: ExperimentMetric,
+    ):
+        self.model = model
+        self.experiment_config = experiment_config.adapt_to_model(model)
+        self.experiment_metrics = experiment_metrics
+        self.experiment_config.dataset = self.experiment_metrics.dataset
+    
+    def run_experiment(self):
+        '''
+        Runs the experiment.
+        Returns:
+            Tensor
+        '''
+        self.experiment_metrics.set_baseline(self.model)
+        results = torch.empty(self.get_result_shape()) # Create an empty tensor to store results.
+        if self.experiment_config.verbose:
+            print(self.experiment_config)
+        
+        for layer in tqdm(range(self.experiment_config.beg_layer, self.experiment_config.end_layer)):
+            if self.experiment_config.target_module == "attn_head":
+                for head in self.experiment_config.heads:
+                    hook = self.get_hook(
+                        layer,
+                        head,
+                    )
+                    results[layer, head] = self.compute_metric(hook).cpu().detach() # Compute metric and store in result tensor.
+            else:
+                hook = self.get_hook(
+                    layer,
+                )
+                results[layer] = self.compute_metric(hook).cpu().detach() # Compute metric and store in result tensor.
+            self.model.reset_hooks() # Reset hooks after each layer.
+            if len(result.shape) < 2:
+                results = result.unsqueeze(0) # Unsqueeze the first dimension if result shape is less than 2 to ensure we can easily plot the results
+        return results
+
+    def get_result_shape(self):
+        '''
+        Returns the shape of the result tensor.
+        Returns:
+            Tuple[int]
+        '''
+        if self.experiment_config.target_module == "attn_head":
+            return (
+                self.experiment_config.end_layer - self.experiment_config.beg_layer,
+                len(self.experiment_config.heads),
+            ) + self.experiment_metrics.shape
+        else:
+            return (
+                self.experiment_config.end_layer - self.experiment_config.beg_layer,
+            ) + self.experiment_metrics.shape
+    def compute_metric(self, abl_hook):
+        '''
+        Computes the metric using the provided hook.
+        Args:
+            ablhook: Ablation hook to apply during metric computation.
+        Returns:
+            Tensor
+        '''
+        mean_metric = torch.zeros(self.experiment_metrics.shape)
+        self.model.reset_hooks()
+        hk_name, hk = abl_hook
+        self.model.add_hook(hk_name, hk)
+
+        # Only useful if the computation are stochastic. In most cases, only 1 loop. 
+        for it in range(self.experiment_config.nb_metric_iteration):
+            self.update_setup(hk_name)
+            mean_metric += self.experiment_metrics.compute_metric(self.model)
+        return mean_metric / self.experiment_config.nb_metric_iteration
+
+    def update_setup(self, hk_name):
+        '''
+        Updates the setup of the hook.
+        Args:
+            hk_name: Name of the hook to update.
+        Returns:
+            None
+        '''
+        pass
+
+    def get_target(self, layer: int, head: int = None, target_module: str = None)-> Tuple[str,int]:
+        '''
+        Returns the target module name for the given layer and head (pass target_module to override config settings).
+        Args:
+            layer: Layer index.
+            head: Head index.
+            target_module: Target module name.
+        Returns:
+            str
+        '''
+        if head is not None:
+            hook_name = f"blocks.{layer}.attn.hook_{self.experiment_config.head_circuit}"
+            dim = (
+                1 if "hook_attn" in hook_name else 2
+            ) # Equate dimension to 1 for attn and 2 for others.
+        else:
+            if self.experiment_config.target_module == "mlp" or target_module == "mlp":
+                hook_name = f"blocks.{layer}.mlp.hook_out"
+            else:
+                hook_name = f"blocks.{layer}.hook_attn_out"
+        return hook_name, dim
+    
+class AblationExperiment(Experiment):
+    '''
+    Runs an ablation experiment according to the ablation configuration.
+    Passes semantic_indices not None to average across different index positions. 
+    
+    '''
+    def __init__(
+            self,
+            model: nn.Module,
+            config: AblationConfig,
+            metric: ExperimentMetric,
+            semantic_indices: List[int] = None,
+            means_by_groups : bool = False,
+            groups: List[List[int]] = None,
+    ):
+        super().__init__(model, config, metric)
+        assert "AblationConfig" is str(type(config)), "Config must be of type AblationConfig"
+        assert not (
+            semantic_indices is not None
+        ) and (config.head_circuit in ["hook_attn_scores", "hook_attn"]) # not implemented for attention scores or attn ablation.
+        assert not (means_by_groups and groups is None)
+        self.semantic_indices = semantic_indices
+        self.means_by_groups = means_by_groups
+        self.groups = groups # list of (list of indices of element of the group)
+
+        if self.semantic_indices is not None:
+            warnings.warn("semantic_indices is not None. It is probably what you want.")
+            self.max_len = max([len(self.model.tokenizer(t).input_ids) for t in self.experiment_config.dataset])
+            self.get_seq_no_sem(self.max_len)
+
+            if self.experiment_config.mean_dataset is None and experiment_config.compute_means:
+                self.experiment_config.mean_dataset = self.experiment_config.dataset
+            
+            if self.experiment_config.abl_type == "random":
+                if self.experiment_config.batch_size is None:
+                    self.experiment_config.batch_size = len(self.experiment_config.dataset)
+                if self.experiment_config.max_seq_len is None:
+                    self.experiment_config.batch_size = max(
+                        [len(self.model.tokenizer(t).input_ids) for t in self.experiment_config.dataset]
+                    ) # Infer max_seq_len from dataset
+                if self.experiment_config.cache_means and self.experiment_config.compute_means:
+                    self.get_all_means()
+
+    def run_ablation(self):
+        '''
+        Runs the ablation experiment.
+        Returns:
+            Tensor
+        '''
+        return self.run_experiment()
+    
+    def get_hook(self, layer: int, head: int = None, target_module: str = None):
+        '''
+        Returns the ablation hook for the given layer and head.
+        Args:
+            layer: Layer index.
+            head: Head index.
+            target_module: Target module name.
+        Returns:
+            Tuple[str, Callable[[Tensor, HookPoint], Tensor]]
+        '''
+        hk_name, dim = self.get_target(layer, head, target_module)
+        mean = None
+        if self.experiment_config.compute_means:
+            if self.experiment_config.compute_means:
+                if self.means_by_groups:
+                    mean = self.mean_cache[hk_name]
+                else:
+                    mean = self.get_mean(hk_name)
+        
+        abl_hook = get_act_hook(
+            self.experiment_config.abl_fn, mean, head, dim=dim
+        ) # Get activation hook as ablation hook
+        return (hk_name,abl_hook)
+
+
 def get_act_hook(
         fn,
         alt_act: Any=None,
         idx: Any = None,
-        dim: Any = None,
+        dim: Any = None,raise ValueError("You must specify batch_size and max_seq_len for random ablatio
         name: Any = None,
         message: Any = None,
         metadata: Any = None, 
