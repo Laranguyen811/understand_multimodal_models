@@ -383,7 +383,7 @@ class AblationExperiment(Experiment):
     '''
     def __init__(
             self,
-            model: nn.Module,
+            model:nn.Module,
             config: AblationConfig,
             metric: ExperimentMetric,
             semantic_indices: List[int] = None,
@@ -438,7 +438,7 @@ class AblationExperiment(Experiment):
         '''
         hk_name, dim = self.get_target(layer, head, target_module)
         mean = None
-        if self.experiment_config.compute_means:
+        if self.config.compute_means:
             if self.experiment_config.compute_means:
                 if self.means_by_groups:
                     mean = self.mean_cache[hk_name]
@@ -449,6 +449,127 @@ class AblationExperiment(Experiment):
             self.experiment_config.abl_fn, mean, head, dim=dim
         ) # Get activation hook as ablation hook
         return (hk_name,abl_hook)
+    
+    def get_all_mean(self):
+        '''
+        Gets all the means in cache. 
+        Returns:
+            None
+        '''
+        self.act_cache = {}
+        self.model.reset_hooks()
+        self.model.cache_all(self.act_cache)
+        self.model(self.config.mean_dataset)
+        self.mean_cache = {}
+        for hk in self.act_cache.keys():
+            if "blocks" in hk:
+                self.mean_cache[hk] = self.compute_mean(self.act_cache[hk], hk)
+    
+    def get_mean(self,hook_name):
+        '''
+        Gets mean.
+        Args:
+            hook_name: A name of hook to get mean from.
+        Returns:
+            None
+        '''
+        cache = {}
+    
+        def cache_hook(z: Tensor,hook:Tensor):
+            '''
+            Caches hook.
+            Args:
+                z(Tensor): An input tensor.
+                hook (Tensor): A tensor of a hook point.
+            Returns:
+                None
+            '''
+            cache[hook_name] = z.detach().to("cuda") # Cache hook 
+        
+        self.model.reset_hooks() # Reset hooks 
+        self.model.run_with_hooks(
+            self.config.mean_dataset. fwd_hooks=[(hook_name, cache_hook)]
+        )
+        return self.compute_mean(cache[hook_name], hook_name)
+    
+    def compute_mean(self,
+                     z: Tensor,
+                     hk_name: str):
+        '''
+        Computes mean from input tensors.
+        Args:
+            z(Tensor): An input tensor.
+            hk_name(str): A string of hook name.
+        Returns:
+            a float or tensor of mean.
+        '''
+        mean = (
+            torch.mean(z. dim=0, keepdim=False).detach().clone()
+        ) # Compute mean along the batch dim
+        mean = einops.repeat(mean, "... -> s ...", s=z.shape[0])
+
+        if self.config.abl_type == "random":
+
+            mean = get_ramdom_sample(
+                z.clone().flatten(start_dim=0, end_dim=1), # Clone (return a copy with flowing gradients) and flatten (compress multidimensional arrays into one-dimensional ones)
+            
+            (
+                self.config.batch_size,
+                self.config.max_seq_len,
+            ),
+            ) 
+
+        if self.means_by_groups:
+            mean = torch.zeros_like(z)
+            for group in self.groups:
+                group_mean = torch.mean(z[group], dim=0, keepdim=False).detach().clone()
+                mean[group] = einops.repeat(group_mean,"... -> s ...",s=len(group))
+
+        if (
+            self.semantic_indices is None
+            or "hook_attn" in hk_name
+            or self.means_by_groups
+        ):
+            return mean
+        
+        dataset_length = len(self.config.mean_dataset)
+
+        for semantic_symbol, semantic_indices in self.semantic_indices.items():
+            mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
+                torch.mean(
+                    z[list(range(dataset_length)), semantic_indices],
+                    dim=0,
+                    keepdim=False,
+                ).clone(),
+                "... -> s ...",
+                s=dataset_length, 
+                ) # Compute the global mean of the semantic-position and write the same mean into every sequence's semantic position
+
+    def get_seq_no_sem(self, max_len: int):
+        '''
+        Obtains the sequence without semantics.
+        Args:
+            max_len(int): An integer of maximum length.
+        Returns: 
+            None
+        '''
+        self.seq_no_sem = []
+        for pos in range(max_len):
+            seq_no_sem_at_pos = []
+            
+            for seq in range(len(self.config.mean_dataset)):
+                seq_is_sem = False
+                for semantic_symbol, semantic_indices in self.semantic_indices.items():
+                    if pos == semantic_indices[seq]:
+                        seq_is_sem = True # If the position is the same as the semantic index of sequence, sequence is semantic
+                        break
+                
+                if self.semantic_indices["end"][seq] < pos:
+                    seq_is_sem = True 
+
+
+
+
 
 
 def get_act_hook(
