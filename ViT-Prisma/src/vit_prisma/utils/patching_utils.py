@@ -152,8 +152,8 @@ def path_patching(
         return_hooks:Bool=False,
         extra_hooks=[],
         freeze_mlps: Bool=False,
-        have_internal_interactions: Bool = False,
-                  ):
+        have_internal_interactions: Bool = False
+        ):
     '''
     Isolates indirect effects from direct effects by replacing components in a model's forward pass with different activations and comparing the change.
     
@@ -172,7 +172,7 @@ def path_patching(
     Returns:
         Tensor or Model
     '''
-    def patch_positions(z, source_act, hook, positions["end"], verbose=False):
+    def patch_positions(z, source_act, hook, positions=["end"], verbose=False):
         '''
         Determines the positions to patch. 
         '''

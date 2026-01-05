@@ -1,5 +1,5 @@
 # %%
-from typing import Callable, Union, List, Tuple, Any
+from typing import Callable, Union, List, Tuple, Any, Optional
 import torch
 import warnings
 from torch import Tensor
@@ -91,12 +91,13 @@ class ExperimentConfig:
         '''
         assert target_module in ["mlp","attn_layer","attn_head"], f"Invalid target module: {target_module}"
         assert head_circuit in ["q","k","v","z","attn","attn_scores","result"], f"Invalid head circuit: {head_circuit}"
+        self.nb_metric_iteration = nb_metric_iteration
         self.target_module = target_module # Target module to run the experiment on.
         self.layers = layers # Layers to run the experiment on.
         self.heads = heads # Heads to run the experiment on.
         self.verbose = verbose # Whether to print verbose output.
         self.head_circuit = head_circuit # Head circuit to use.
-        self.dataset = dataset # Dataset to run the experiment on.
+        self.dataset = None # Set dataset to None.
 
         self.beg_layer = None # Beginning layer for the experiment.
         self.end_layer = None # End layer for the experiment.
@@ -207,8 +208,8 @@ class AblationConfig(ExperimentConfig):
             abl_type: str = "zero",
             mean_dataset: Any = None,
             compute_means: bool = False,
-            batch_size: int = None,
-            max_seq_len: int = None,
+            batch_size: Optional[int] = None,
+            max_seq_len: Optional[int] = None,
             abl_fn: Callable[[Tensor,Tensor,HookPoint], Tensor] = None,
             **kwargs,
     ):
@@ -375,7 +376,7 @@ class Experiment:
                 hook_name = f"blocks.{layer}.hook_attn_out"
         return hook_name, dim
     
-class AblationExperiment(Experiment):
+class Ablation(Experiment):
     '''
     Runs an ablation experiment according to the ablation configuration.
     Passes semantic_indices not None to average across different index positions. 
@@ -384,17 +385,17 @@ class AblationExperiment(Experiment):
     def __init__(
             self,
             model:nn.Module,
-            config: AblationConfig,
+            ablation_config: AblationConfig,
             metric: ExperimentMetric,
             semantic_indices: List[int] = None,
             means_by_groups : bool = False,
             groups: List[List[int]] = None,
     ):
-        super().__init__(model, config, metric)
-        assert "AblationConfig" is str(type(config)), "Config must be of type AblationConfig"
+        super().__init__(model, ablation_config, metric)
+        assert "AblationConfig" is str(type(ablation_config)), "Config must be of type AblationConfig"
         assert not (
             semantic_indices is not None
-        ) and (config.head_circuit in ["hook_attn_scores", "hook_attn"]) # not implemented for attention scores or attn ablation.
+        ) and (ablation_config.head_circuit in ["hook_attn_scores", "hook_attn"]) # not implemented for attention scores or attn ablation.
         assert not (means_by_groups and groups is None)
         self.semantic_indices = semantic_indices
         self.means_by_groups = means_by_groups
@@ -402,21 +403,21 @@ class AblationExperiment(Experiment):
 
         if self.semantic_indices is not None:
             warnings.warn("semantic_indices is not None. It is probably what you want.")
-            self.max_len = max([len(self.model.tokenizer(t).input_ids) for t in self.experiment_config.dataset])
+            self.max_len = max([len(self.model.tokenizer(t).input_ids) for t in self.cfg.mean_dataset])
             self.get_seq_no_sem(self.max_len)
 
-            if self.experiment_config.mean_dataset is None and experiment_config.compute_means:
-                self.experiment_config.mean_dataset = self.experiment_config.dataset
+            if self.cfg.mean_dataset is None and ablation_config.compute_means:
+                self.cfg.mean_dataset = self.metric.dataset
             
-            if self.experiment_config.abl_type == "random":
-                if self.experiment_config.batch_size is None:
-                    self.experiment_config.batch_size = len(self.experiment_config.dataset)
-                if self.experiment_config.max_seq_len is None:
-                    self.experiment_config.batch_size = max(
-                        [len(self.model.tokenizer(t).input_ids) for t in self.experiment_config.dataset]
+            if self.cfg.abl_type == "random":
+                if self.cfg.batch_size is None:
+                    self.cfg.batch_size = len(self.metric.dataset)
+                if self.cfg.max_seq_len is None:
+                    self.cfg.batch_size = max(
+                        [len(self.metric.dataset[i]) for i in range(len(self.metric.dataset))]
                     ) # Infer max_seq_len from dataset
-                if self.experiment_config.cache_means and self.experiment_config.compute_means:
-                    self.get_all_means()
+                if self.cfg.cache_means and self.cfg.compute_means:
+                    self.get_all_mean()
 
     def run_ablation(self):
         '''
@@ -438,15 +439,15 @@ class AblationExperiment(Experiment):
         '''
         hk_name, dim = self.get_target(layer, head, target_module)
         mean = None
-        if self.config.compute_means:
-            if self.experiment_config.compute_means:
+        if self.cfg.compute_means:
+            if self.cfg.cache_means:
                 if self.means_by_groups:
                     mean = self.mean_cache[hk_name]
                 else:
                     mean = self.get_mean(hk_name)
         
         abl_hook = get_act_hook(
-            self.experiment_config.abl_fn, mean, head, dim=dim
+            self.cfg.abl_fn, mean, head, dim=dim
         ) # Get activation hook as ablation hook
         return (hk_name,abl_hook)
     
@@ -459,7 +460,7 @@ class AblationExperiment(Experiment):
         self.act_cache = {}
         self.model.reset_hooks()
         self.model.cache_all(self.act_cache)
-        self.model(self.config.mean_dataset)
+        self.model(self.cfg.mean_dataset)
         self.mean_cache = {}
         for hk in self.act_cache.keys():
             if "blocks" in hk:
@@ -488,7 +489,7 @@ class AblationExperiment(Experiment):
         
         self.model.reset_hooks() # Reset hooks 
         self.model.run_with_hooks(
-            self.config.mean_dataset. fwd_hooks=[(hook_name, cache_hook)]
+            self.cfg.mean_dataset. fwd_hooks=[(hook_name, cache_hook)]
         )
         return self.compute_mean(cache[hook_name], hook_name)
     
@@ -514,16 +515,16 @@ class AblationExperiment(Experiment):
                 z.clone().flatten(start_dim=0, end_dim=1), # Clone (return a copy with flowing gradients) and flatten (compress multidimensional arrays into one-dimensional ones)
             
             (
-                self.config.batch_size,
-                self.config.max_seq_len,
+                self.cfg.batch_size,
+                self.cfg.max_seq_len,
             ),
             ) 
 
         if self.means_by_groups:
             mean = torch.zeros_like(z)
             for group in self.groups:
-                group_mean = torch.mean(z[group], dim=0, keepdim=False).detach().clone()
-                mean[group] = einops.repeat(group_mean,"... -> s ...",s=len(group))
+                group_mean = torch.mean(z[group], dim=0, keepdim=False).detach().clone() # Create group mean
+                mean[group] = einops.repeat(group_mean,"... -> s ...",s=len(group)) # Create the mean of the specified group
 
         if (
             self.semantic_indices is None
@@ -532,7 +533,7 @@ class AblationExperiment(Experiment):
         ):
             return mean
         
-        dataset_length = len(self.config.mean_dataset)
+        dataset_length = len(self.cfg.mean_dataset)
 
         for semantic_symbol, semantic_indices in self.semantic_indices.items():
             mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
@@ -557,7 +558,7 @@ class AblationExperiment(Experiment):
         for pos in range(max_len):
             seq_no_sem_at_pos = []
             
-            for seq in range(len(self.config.mean_dataset)):
+            for seq in range(len(self.cfg.mean_dataset)):
                 seq_is_sem = False
                 for semantic_symbol, semantic_indices in self.semantic_indices.items():
                     if pos == semantic_indices[seq]:
@@ -565,18 +566,129 @@ class AblationExperiment(Experiment):
                         break
                 
                 if self.semantic_indices["end"][seq] < pos:
-                    seq_is_sem = True 
+                    seq_is_sem = True # If semantic indices at end sequence is smaller than the current position, sequence is semantic
+                
+                if not (seq_is_sem):
+                    seq_no_sem_at_pos.append(seq) # If sequence is not semantic, append sequence to the seq_no_sem_at_pos list
 
+                self.seq_no_sem.append(seq_no_sem_at_pos.copy()) # Append the copy of seq_no_sem_at_pos to seq_no_sem
 
+            def update_setup(self, hook_name: str):
+                '''
+                Updates the setup.
+                Args:
+                    hook_name(str): A string of hook name
+                Returns:
+                    None
+                ''' 
+                if self.cfg.abl_type == "random":
+                    self.mean_cache[hook_name] = self.compute_mean(
+                        self.act_cache[hook_name], hook_name
+                    ) # Randomise the cache for random ablation
 
+class Patching(Ablation):
+    def __init__(
+            self, 
+            model: nn.Module,
+            patching_config: PatchingConfig,
+            metric: ExperimentMetric
+    ):
+        super().__init__(model, patching_config, metric)
+        assert "PatchingConfig" is str(type(config))
+        if self.cfg.cache_act:
+            self.get_all_act()
+        
+    def run_patching(self):
+        '''
+        Runs patching.
+        '''
+        return self.run_experiment()
+    
+    def get_hook(self, layer:int, head:str=None, target_module:str=None, patch_fn:Callable[[Tensor,Tensor,HookPoint], Tensor] =None):
+        '''
+        Gets the hook.
+        Args:
+            layer (int): An integer as the layer number.
+            head(str): A string of attention head.
+            target_module(str): A string of target module name.
+            patch_fn(Callable): Patching function.
+        Returns:
+            ActivationCache of hook name.
+        '''
+        def __init__(
+                self, 
+                model: nn.Module,
+                config: PatchingConfig,
+                metric: ExperimentMetric,
+        ):
+            super().__init__(model, config, metric)
+            assert "PatchingConfig" in str(type(config))
+            if self.cfg.cache_act:
+                self.get_all_act()
+            
+        def run_patching(self):
+            return self.run_experiment()
+        
+        def get_hook(self, layer: int, head:Optional[str]=None, target_module:Optional[str]=None, patch_fn:Optional[Callable]=None)-> Tuple:
+            '''
+            Gets hook.
+            Args:
+                layer (int): An integer of a layer number.
+                head(Optional[str]): A string of a head name.
+                target_module (Optional[str]): A str of a target module name.
+                patch_fn(Optional[Callable]): A patching function.
+            Returns:
+                Tuple of hook name and hook.
+            '''
+            hook_name, dim = self.get_target(layer, head, target_module=target_module) # Get the hook name and the dimension
+            if self.cfg.cache_act:
+                act = self.act_cache[hook_name] # Get activation on the source dataset if config has cache_act
+            else:
+                act = self.get_act(hook_name)  # Otherwise, get activation from hook name
+            
+            if patch_fn is None:
+                patch_fn = self.cfg.patch_fn # if patch function is None, use patch_fn in config
+            
+            hook = get_act_hook(self.cfg.patch_fn, act, head, dim=dim) # Get the activation hook
+            return(hook_name, hook)
 
+        def get_all_act(self):
+            '''
+            Gets all activations. 
+            '''
+            self.act_cache = {}
+            self.model.reset_hooks() # Reset hooks
+            self.model.cache_all(self.act_cache) # Cache all activations
+            self.model(self.cfg.source_dataset) # Use the model with source dataset
 
+        def get_act(self, hook_name: str):
+            '''
+            Gets activations.
+            '''    
+            cache = {}
+
+            def cache_hook(z: Tensor, hook: Tensor):
+                '''
+                Caches hooks.
+                Args:
+                    z(Tensor): A tensor of inputs.
+                    hook(Tensor): A tensor of hook.
+                Returns:
+                    ActivationCache of hook.
+                '''
+                cache[hook_name] = z.detach().to("cuda")
+
+                self.model.reset_hooks()
+                self.model.run_with_hooks(
+                    self.cfg.source_dataset, fwd_hooks=[(hook_name, cache_hook)]
+                )
+                return cache[hook_name]
 
 def get_act_hook(
         fn,
         alt_act: Any=None,
         idx: Any = None,
-        dim: Any = None,raise ValueError("You must specify batch_size and max_seq_len for random ablatio
+        dim: Any = None,
         name: Any = None,
         message: Any = None,
         metadata: Any = None, 
@@ -643,4 +755,24 @@ def get_act_hook(
             return z
         
     return custom_hook
+
+def get_random_sample(
+        activation_set,
+        output_shape
+):
+    '''
+    Generates a tensor of shape (batch, seq_len, ...) made of vectors sampled from activation_set.
+    Args:
+        activation_set: An activation set of shape (N, ...).
+        output_shape: An output shape.
+    Returns:
+        A tensor of output
+    '''
+    N = activation_set.shape[0]
+    orig_shape = activation_set.shape[1:] # Assigns the original shape to activation set shape from index 1 onwards
+    batch, seq_len = output_shape 
+    idx = torch.randint(low=0, high=N, size=(batch * seq_len,)) # Create an index from a random integer with specified parameters
+    out = activation_set[idx].clone() # Clone the activation set at the specific index as output
+    out = out.reshape((batch, seq_len) + orig_shape) # Reshape output
+    return out
 
