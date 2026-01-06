@@ -33,8 +33,8 @@ from vit_prisma.utils.experiment_utils import calculate_gelu, to_numpy, get_corn
 class ExperimentMetric:
     def __init__(
             self, 
-            metric: Callable[[Any], torch.Tensor],
-            dataset: Any,
+            metric,
+            dataset,
             scalar_metric: bool = True,
             relative_metric:bool=True,
 
@@ -46,10 +46,10 @@ class ExperimentMetric:
         self.metric = metric # Metric can return any tensor shape. Can call run_with_hook with reset_hooks_start=False.
         self.scalar_metric = scalar_metric # Whether the metric returns a scalar value.
         self.baseline = None # Baseline value for relative metrics.
-        self.daytaet = dataset # Dataset to run the metric on.
+        self.dataset = dataset # Dataset to run the metric on.
         self.shape = None # Shape of the metric output.
 
-    def set_baseline(self, model: nn.Module):
+    def set_baseline(self, model):
         '''
         Sets the baseline value for relative metrics.
         Args:
@@ -59,13 +59,14 @@ class ExperimentMetric:
         '''
         model.reset_hooks()
         base_metric = self.metric(model,self.dataset)
+        self.baseline = base_metric
         self.shape = base_metric.shape
         
     def compute_metric(self,model):
         assert (self.baseline is not None) or not (
             self.relative_metric
         ), "Baseline must be set for relative mean."
-        out = self.metric(model,self.dataset)
+        out = self.metric(model, self.dataset)
         if self.scalar_metric:
             assert (
                 len(out.shape) == 0
@@ -73,12 +74,13 @@ class ExperimentMetric:
 
         self.shape = out.shape
         if self.relative_metric:
-            out = out / self.baseline - 1
+            out = (out / self.baseline) - 1
         return out
 
 class ExperimentConfig:
     def __init__(
             self, 
+            abl_type:str="zero",
             target_module: str = "attn_head",
             layers: Union[Tuple[int,int], str] = "all",
             heads: Union[List[int], str] = "all",
@@ -101,10 +103,11 @@ class ExperimentConfig:
 
         self.beg_layer = None # Beginning layer for the experiment.
         self.end_layer = None # End layer for the experiment.
-
+        self.abl_type = abl_type
+        self.compute_means = (abl_type == "mean" or abl_type == "custom" or abl_type == "random")
     def adapt_to_model(
             self,
-            model: nn.Module,
+            model,
     ):
         '''
         Adapts the experiment configuration to the model.
@@ -147,16 +150,16 @@ class ExperimentConfig:
         str_print = f"--- {self.__class__.__name__} ---\n" # String print of the class.
         for name, atr in vars(self).items():
             attr = getattr(self, name) # Get attribute value.
-            attr_str = f" * {name}:" # String representation of the attribute.
+            attr_str = f"* {name}:" # String representation of the attribute.
             
             if name == "mean_dataset" and self.compute_means and attr is not None:
                 attr_str += get_sample_from_dataset(self.mean_dataset)
             elif name =="dataset" and attr is not None:
                 attr_str += get_sample_from_dataset(self.dataset)
             else:
-                atr_str += str(attr)
-            atr_str += "\n"
-            str_print += atr_str
+                attr_str += str(attr)
+            attr_str += "\n"
+            str_print += attr_str
         return str_print
 
     def __repr__(self) -> str:
@@ -207,7 +210,7 @@ class AblationConfig(ExperimentConfig):
             self,
             abl_type: str = "zero",
             mean_dataset: Any = None,
-            compute_means: bool = False,
+            cache_means: bool = False,
             batch_size: Optional[int] = None,
             max_seq_len: Optional[int] = None,
             abl_fn: Callable[[Tensor,Tensor,HookPoint], Tensor] = None,
@@ -233,7 +236,11 @@ class AblationConfig(ExperimentConfig):
         
         self.abl_type = abl_type # Type of ablation.
         self.mean_dataset = mean_dataset # Dataset to compute means.
-        self.compute_means = compute_means # Whether to compute means.
+        self.cache_means = cache_means # Whether to cache means.
+        self.compute_means = (abl_type == "mean" or abl_type == "custom" or abl_type == "random")
+        
+        self.abl_fn = abl_fn
+
         self.batch_size = batch_size # Batch size for random ablation.
         self.max_seq_len = max_seq_len # Maximum sequence length for random ablation.
 
@@ -252,8 +259,8 @@ class PatchingConfig(ExperimentConfig):
     '''
     def __init__(
             self, 
-            source_dataset: List[str] = None,
-            target_dataset: List[str] = None,
+            source_dataset: Optional[List[str]] = None,
+            target_dataset: Optional[List[str]] = None,
             patch_fn : Callable[[Tensor,Tensor,HookPoint], Tensor] = None,
             cache_act : bool = True,
             **kwargs,
@@ -272,14 +279,14 @@ class Experiment:
     '''   
     def __init__(
             self,
-            model: nn.Module,
+            model,
             experiment_config: ExperimentConfig,
             experiment_metrics: ExperimentMetric,
     ):
         self.model = model
-        self.experiment_config = experiment_config.adapt_to_model(model)
+        self.cfg = experiment_config.adapt_to_model(model)
         self.experiment_metrics = experiment_metrics
-        self.experiment_config.dataset = self.experiment_metrics.dataset
+        self.cfg.dataset = self.experiment_metrics.dataset
     
     def run_experiment(self):
         '''
@@ -289,12 +296,13 @@ class Experiment:
         '''
         self.experiment_metrics.set_baseline(self.model)
         results = torch.empty(self.get_result_shape()) # Create an empty tensor to store results.
-        if self.experiment_config.verbose:
-            print(self.experiment_config)
+        if self.cfg.verbose:
+            print(self.cfg)
         
-        for layer in tqdm(range(self.experiment_config.beg_layer, self.experiment_config.end_layer)):
-            if self.experiment_config.target_module == "attn_head":
-                for head in self.experiment_config.heads:
+        
+        for layer in tqdm(range(self.cfg.beg_layer, self.cfg.end_layer)):
+            if self.cfg.target_module == "attn_head":
+                for head in self.cfg.heads:
                     hook = self.get_hook(
                         layer,
                         head,
@@ -306,8 +314,8 @@ class Experiment:
                 )
                 results[layer] = self.compute_metric(hook).cpu().detach() # Compute metric and store in result tensor.
             self.model.reset_hooks() # Reset hooks after each layer.
-            if len(result.shape) < 2:
-                results = result.unsqueeze(0) # Unsqueeze the first dimension if result shape is less than 2 to ensure we can easily plot the results
+            if len(results.shape) < 2:
+                results = results.unsqueeze(0) # Unsqueeze the first dimension if result shape is less than 2 to ensure we can easily plot the results
         return results
 
     def get_result_shape(self):
@@ -316,14 +324,14 @@ class Experiment:
         Returns:
             Tuple[int]
         '''
-        if self.experiment_config.target_module == "attn_head":
+        if self.cfg.target_module == "attn_head":
             return (
-                self.experiment_config.end_layer - self.experiment_config.beg_layer,
-                len(self.experiment_config.heads),
+                self.cfg.end_layer - self.cfg.beg_layer,
+                len(self.cfg.heads),
             ) + self.experiment_metrics.shape
         else:
             return (
-                self.experiment_config.end_layer - self.experiment_config.beg_layer,
+                self.cfg.end_layer - self.cfg.beg_layer,
             ) + self.experiment_metrics.shape
     def compute_metric(self, abl_hook):
         '''
@@ -339,10 +347,10 @@ class Experiment:
         self.model.add_hook(hk_name, hk)
 
         # Only useful if the computation are stochastic. In most cases, only 1 loop. 
-        for it in range(self.experiment_config.nb_metric_iteration):
+        for it in range(self.cfg.nb_metric_iteration):
             self.update_setup(hk_name)
             mean_metric += self.experiment_metrics.compute_metric(self.model)
-        return mean_metric / self.experiment_config.nb_metric_iteration
+        return mean_metric / self.cfg.nb_metric_iteration
 
     def update_setup(self, hk_name):
         '''
@@ -354,7 +362,7 @@ class Experiment:
         '''
         pass
 
-    def get_target(self, layer: int, head: int = None, target_module: str = None)-> Tuple[str,int]:
+    def get_target(self, layer: int, head: Optional[int] = None, target_module: Optional[str] = None):
         '''
         Returns the target module name for the given layer and head (pass target_module to override config settings).
         Args:
@@ -365,15 +373,16 @@ class Experiment:
             str
         '''
         if head is not None:
-            hook_name = f"blocks.{layer}.attn.hook_{self.experiment_config.head_circuit}"
+            hook_name = f"blocks.{layer}.attn.hook_{self.cfg.head_circuit}"
             dim = (
                 1 if "hook_attn" in hook_name else 2
             ) # Equate dimension to 1 for attn and 2 for others.
         else:
-            if self.experiment_config.target_module == "mlp" or target_module == "mlp":
+            if self.cfg.target_module == "mlp" or target_module == "mlp":
                 hook_name = f"blocks.{layer}.mlp.hook_out"
             else:
                 hook_name = f"blocks.{layer}.hook_attn_out"
+        dim = None # All the activation dimensions are ablated
         return hook_name, dim
     
 class Ablation(Experiment):
@@ -384,12 +393,12 @@ class Ablation(Experiment):
     '''
     def __init__(
             self,
-            model:nn.Module,
+            model: nn.Module,
             ablation_config: AblationConfig,
             metric: ExperimentMetric,
-            semantic_indices: List[int] = None,
+            semantic_indices: Optional[List[int]] = None,
             means_by_groups : bool = False,
-            groups: List[List[int]] = None,
+            groups: Optional[List[List[int]]] = None,
     ):
         super().__init__(model, ablation_config, metric)
         assert "AblationConfig" is str(type(ablation_config)), "Config must be of type AblationConfig"
@@ -489,7 +498,7 @@ class Ablation(Experiment):
         
         self.model.reset_hooks() # Reset hooks 
         self.model.run_with_hooks(
-            self.cfg.mean_dataset. fwd_hooks=[(hook_name, cache_hook)]
+            self.cfg.mean_dataset.fwd_hooks==[(hook_name, cache_hook)]
         )
         return self.compute_mean(cache[hook_name], hook_name)
     
@@ -505,11 +514,11 @@ class Ablation(Experiment):
             a float or tensor of mean.
         '''
         mean = (
-            torch.mean(z. dim=0, keepdim=False).detach().clone()
+            torch.mean(z, dim=0, keepdim=False).detach().clone()
         ) # Compute mean along the batch dim
         mean = einops.repeat(mean, "... -> s ...", s=z.shape[0])
 
-        if self.config.abl_type == "random":
+        if self.cfg.abl_type == "random":
 
             mean = get_ramdom_sample(
                 z.clone().flatten(start_dim=0, end_dim=1), # Clone (return a copy with flowing gradients) and flatten (compress multidimensional arrays into one-dimensional ones)
@@ -573,18 +582,18 @@ class Ablation(Experiment):
 
                 self.seq_no_sem.append(seq_no_sem_at_pos.copy()) # Append the copy of seq_no_sem_at_pos to seq_no_sem
 
-            def update_setup(self, hook_name: str):
-                '''
-                Updates the setup.
-                Args:
-                    hook_name(str): A string of hook name
-                Returns:
-                    None
-                ''' 
-                if self.cfg.abl_type == "random":
-                    self.mean_cache[hook_name] = self.compute_mean(
-                        self.act_cache[hook_name], hook_name
-                    ) # Randomise the cache for random ablation
+    def update_setup(self, hook_name):
+        '''
+        Updates the setup.
+        Args:
+            hook_name(str): A string of hook name
+        Returns:
+            None
+        ''' 
+        if self.cfg.abl_type == "random":
+                self.mean_cache[hook_name] = self.compute_mean(
+                    self.act_cache[hook_name], hook_name
+                ) # Randomise the cache for random ablation
 
 class Patching(Ablation):
     def __init__(
@@ -594,7 +603,7 @@ class Patching(Ablation):
             metric: ExperimentMetric
     ):
         super().__init__(model, patching_config, metric)
-        assert "PatchingConfig" is str(type(config))
+        assert "PatchingConfig" is str(type(patching_config))
         if self.cfg.cache_act:
             self.get_all_act()
         
@@ -604,55 +613,30 @@ class Patching(Ablation):
         '''
         return self.run_experiment()
     
-    def get_hook(self, layer:int, head:str=None, target_module:str=None, patch_fn:Callable[[Tensor,Tensor,HookPoint], Tensor] =None):
-        '''
-        Gets the hook.
-        Args:
-            layer (int): An integer as the layer number.
-            head(str): A string of attention head.
-            target_module(str): A string of target module name.
-            patch_fn(Callable): Patching function.
-        Returns:
-            ActivationCache of hook name.
-        '''
-        def __init__(
-                self, 
-                model: nn.Module,
-                config: PatchingConfig,
-                metric: ExperimentMetric,
-        ):
-            super().__init__(model, config, metric)
-            assert "PatchingConfig" in str(type(config))
-            if self.cfg.cache_act:
-                self.get_all_act()
-            
-        def run_patching(self):
-            return self.run_experiment()
         
-        def get_hook(self, layer: int, head:Optional[str]=None, target_module:Optional[str]=None, patch_fn:Optional[Callable]=None)-> Tuple:
-            '''
-            Gets hook.
-            Args:
-                layer (int): An integer of a layer number.
-                head(Optional[str]): A string of a head name.
-                target_module (Optional[str]): A str of a target module name.
-                patch_fn(Optional[Callable]): A patching function.
-            Returns:
-                Tuple of hook name and hook.
-            '''
-            hook_name, dim = self.get_target(layer, head, target_module=target_module) # Get the hook name and the dimension
-            if self.cfg.cache_act:
-                act = self.act_cache[hook_name] # Get activation on the source dataset if config has cache_act
-            else:
-                act = self.get_act(hook_name)  # Otherwise, get activation from hook name
+    def get_hook(self, layer: int, head:Optional[str]=None, target_module:Optional[str]=None, patch_fn:Optional[Callable]=None)-> Tuple:
+        '''
+        Gets hook.
+        Args:
+            layer (int): An integer of a layer number.
+            head(Optional[str]): A string of a head name.
+            target_module (Optional[str]): A str of a target module name.
+            patch_fn(Optional[Callable]): A patching function.
+        Returns:
+            Tuple of hook name and hook.
+        '''
+        hook_name, dim = self.get_target(layer, head, target_module=target_module) # Get the hook name and the dimension
+        if self.cfg.cache_act:
+            act = self.act_cache[hook_name] # Get activation on the source dataset if config has cache_act
+        else:
+            act = self.get_act(hook_name)  # Otherwise, get activation from hook name
             
-            if patch_fn is None:
-                patch_fn = self.cfg.patch_fn # if patch function is None, use patch_fn in config
+        if patch_fn is None:
+            patch_fn = self.cfg.patch_fn # if patch function is None, use patch_fn in config
             
-            hook = get_act_hook(self.cfg.patch_fn, act, head, dim=dim) # Get the activation hook
-            return(hook_name, hook)
-
-        def get_all_act(self):
+        hook = get_act_hook(self.cfg.patch_fn, act, head, dim=dim) # Get the activation hook
+        return(hook_name, hook)
+    def get_all_act(self):
             '''
             Gets all activations. 
             '''
@@ -661,28 +645,29 @@ class Patching(Ablation):
             self.model.cache_all(self.act_cache) # Cache all activations
             self.model(self.cfg.source_dataset) # Use the model with source dataset
 
-        def get_act(self, hook_name: str):
-            '''
-            Gets activations.
-            '''    
-            cache = {}
+    def get_act(self, hook_name: str):
+        '''
+        Gets activations.
+        '''    
+        cache = {}
 
-            def cache_hook(z: Tensor, hook: Tensor):
-                '''
-                Caches hooks.
-                Args:
-                    z(Tensor): A tensor of inputs.
-                    hook(Tensor): A tensor of hook.
-                Returns:
-                    ActivationCache of hook.
-                '''
-                cache[hook_name] = z.detach().to("cuda")
+    def cache_hook(z: Tensor, hook: Tensor):
+        '''
+        Caches hooks.
+        Args:
+            z(Tensor): A tensor of inputs.
+            hook(Tensor): A tensor of hook.
+        Returns:
+            ActivationCache of hook.
+        '''
+        cache[hook_name] = z.detach().to("cuda")
 
-                self.model.reset_hooks()
-                self.model.run_with_hooks(
-                    self.cfg.source_dataset, fwd_hooks=[(hook_name, cache_hook)]
-                )
-                return cache[hook_name]
+        self.model.reset_hooks()
+        self.model.run_with_hooks(
+            self.cfg.source_dataset, fwd_hooks=[(hook_name, cache_hook)]
+            )
+        return cache[hook_name]
+
 
 def get_act_hook(
         fn,

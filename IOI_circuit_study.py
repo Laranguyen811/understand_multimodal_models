@@ -44,12 +44,11 @@ import numpy as np
 import os
 import random
 from tqdm import tqdm as tqdm
-from fancy_einsum import einsum
 import random
 import plotly.express as px
 import pandas as pd
 from vit_prisma.utils.detect_architectures import detect_architecture
-from vit_prisma.utils.patching_utils import path_patching, direct_path_patching, direct_path_patching_up_to
+#from vit_prisma.utils.patching_utils import path_patching, direct_path_patching, direct_path_patching_up_to
 
 # %%
 # Loading the model 
@@ -239,7 +238,7 @@ print(f"Bounding box for 'chin': {chin_bbox}")
 def get_patch_embeddings(
         model: Any,
         inputs,
-    ) -> Tensor:
+    ):
     '''
     Get patch embeddings from the model.
     Args:
@@ -278,7 +277,7 @@ def get_patch_embeddings(
         print(f"Normalized projected text embeddings shape: {text_embeddings_proj_norm.shape}")
 
         # Calculate cosine similarities per patch
-        cosine_similarities = einsum(vision_patch_embeddings_proj_norm,text_embeddings_proj_norm, "b1 n d, b2 p -> n b2") # (num_patches, batch)
+        cosine_similarities = einsum(vision_patch_embeddings_proj_norm,text_embeddings_proj_norm, "b n d, t d -> n t") # (batch num_patches d_model x num_texts dim -> num_patches, batch)
     return vision_patch_embeddings_proj_norm, text_embeddings_proj, cosine_similarities
 
 def find_patch_to_correct_object(
@@ -407,26 +406,6 @@ correct_patches = find_patch_to_correct_object(cosine_similarities, texts)
 region_cos_sim_diff = np.round(compare_region_cosine_similarity(patch_embeddings,text_embeddings),3)
 print(f"Region cosine similarity difference between correct and distractor: {region_cos_sim_diff}")
     
-# %%
-# Path patching 
-def imshow(tensor,renderer=None, midpoint=0, **kwargs):
-    '''
-    Display a tensor as an image.
-    '''
-    px.imshow(tensor.to_numpy(), color_continuous_midpoint=midpoint, color_continuous_scale="RdBu", **kwargs).show(renderer)
-
-def line(tensor,renderer=None, **kwargs):
-    '''
-    Display a tensor as a line plot.
-    '''
-    px.line(tensor.numpy(), **kwargs).show(renderer)
-def scatter(x: Tensor, y: Tensor, x_axis="", y_axis="", c_axis="", renderer=None, **kwargs):
-    '''
-    Display a scatter plot.
-    '''
-    x=x.numpy()
-    y=y.numpy()
-    px.scatter(x=x, y=y,labels={"x":x_axis, "y":y_axis,"color":c_axis}, **kwargs).show(renderer)
 
 
 # %%  
