@@ -1,5 +1,5 @@
 # %%
-from typing import Callable, Union, List, Tuple, Any, Optional
+from typing import Callable, Union, List, Tuple, Any, Optional, Dict
 import torch
 import warnings
 from torch import Tensor
@@ -28,7 +28,7 @@ import itertools
 from transformers import AutoModelForObjectDetection, AutoConfig, AutoTokenizer
 from vit_prisma.prisma_tools.hook_point import HookPoint
 from vit_prisma.utils.experiment_utils import calculate_gelu, to_numpy, get_corner, print_gpu_mem, get_sample_from_dataset 
-
+from abc import ABC, abstractmethod
 # %%
 class ExperimentMetric:
     def __init__(
@@ -93,18 +93,20 @@ class ExperimentConfig:
         '''
         assert target_module in ["mlp","attn_layer","attn_head"], f"Invalid target module: {target_module}"
         assert head_circuit in ["q","k","v","z","attn","attn_scores","result"], f"Invalid head circuit: {head_circuit}"
-        self.nb_metric_iteration = nb_metric_iteration
-        self.target_module = target_module # Target module to run the experiment on.
-        self.layers = layers # Layers to run the experiment on.
-        self.heads = heads # Heads to run the experiment on.
-        self.verbose = verbose # Whether to print verbose output.
-        self.head_circuit = head_circuit # Head circuit to use.
-        self.dataset = None # Set dataset to None.
-
-        self.beg_layer = None # Beginning layer for the experiment.
-        self.end_layer = None # End layer for the experiment.
-        self.abl_type = abl_type
-        self.compute_means = (abl_type == "mean" or abl_type == "custom" or abl_type == "random")
+        self.nb_metric_iteration: int = nb_metric_iteration
+        self.target_module: str = target_module # Target module to run the experiment on.
+        self.layers: Union[Tuple[int,int], str] = layers # Layers to run the experiment on.
+        self.heads: Union[List[int], str] = heads # Heads to run the experiment on.
+        self.verbose: bool = verbose # Whether to print verbose output.
+        self.head_circuit: str = head_circuit # Head circuit to use.
+        self.dataset: Optional[Any] = None # Set dataset to None.
+        self.mean_dataset: Optional[Any] = None # Set mean dataset to None.
+        self.batch_size: Optional[int] = None # Set batch size to None.
+        self.beg_layer: Optional[int] = None # Beginning layer for the experiment.
+        self.end_layer: Optional[int] = None # End layer for the experiment.
+        self.abl_type: str = abl_type
+        
+        self.compute_means: bool = (abl_type == "mean" or abl_type == "custom" or abl_type == "random")
     def adapt_to_model(
             self,
             model,
@@ -120,11 +122,14 @@ class ExperimentConfig:
         if self.target_module == "attn_head":
             if self.heads == "all":
                 model_cfg.heads = list(range(model.cfg.num_heads))
+            elif isinstance(model_cfg.heads, str):
+                model_cfg.heads = list(range(model.cfg.num_heads))
         if self.layers == "all":
             model_cfg.beg_layer = 0
             model_cfg.end_layer = model.cfg.n_layers
         else:
-            model_cfg.beg_layer, model_cfg.end_layer = self.layers
+            if isinstance(self.layers, tuple):
+                model_cfg.beg_layer, model_cfg.end_layer = self.layers
         return model_cfg
 
     def copy(self):
@@ -220,12 +225,9 @@ class AblationConfig(ExperimentConfig):
         assert abl_type in ["mean","zero","neg","random","custom"] # Assert valid ablation types.
         assert not (
             abl_type == "custom" and abl_fn is None
-        ), "You must specify your ablation function"
-        assert not (
-            abl_type == "custom" and abl_fn is None
         ), "You must specify your ablation function" # Ensures custom ablation function is provided.
         assert not (abl_type == "random" and self.nb_metric_iteration < 0) # Ensures ablation type is not random when nb_metric_iteration is negative.
-        assert not (abl_type != "random" and self.nb_metric_iteration != 1) # Ensures nb_metric_iteration is not 1 and ablation type is not random.
+        assert not (abl_type != "random" and self.nb_metric_iteration == 1) # Ensures nb_metric_iteration is not 1 and ablation type is not random.
         assert not ( abl_type =="random" and not (cache_means)), "You must cache means for random ablation." # Ensures means are cached for random ablation.
         assert not (abl_type == "mean" and self.head_circuit in ["attn", "attn_scores"]), "Random ablation is not implemented for attention circuit" # Ensures random ablation is not used for attention circuit.
 
@@ -273,7 +275,7 @@ class PatchingConfig(ExperimentConfig):
         if patch_fn is None:
             self.patch_fn = cst_fn # Default patching function is constant function.
 
-class Experiment:
+class Experiment(ABC):
     '''
     A virtual class to interactively apply hooks to layers or heads. The children class only needs to define the method get_hook.
     '''   
@@ -287,7 +289,13 @@ class Experiment:
         self.cfg = experiment_config.adapt_to_model(model)
         self.experiment_metrics = experiment_metrics
         self.cfg.dataset = self.experiment_metrics.dataset
-    
+    @abstractmethod
+    def get_hook(self, layer: int, head: Optional[int] = None, target_module: Optional[str]=None):
+        '''
+        Returns the hook for the given layer and head.
+        Must be implemented by child classes.
+        '''
+        pass
     def run_experiment(self):
         '''
         Runs the experiment.
@@ -295,27 +303,34 @@ class Experiment:
             Tensor
         '''
         self.experiment_metrics.set_baseline(self.model)
-        results = torch.empty(self.get_result_shape()) # Create an empty tensor to store results.
+        result_shape = self.get_result_shape()
+        assert result_shape is not None, "Result shape cannot be None"
+        results = torch.empty(result_shape) # Create an empty tensor to store results.
         if self.cfg.verbose:
             print(self.cfg)
         
-        
-        for layer in tqdm(range(self.cfg.beg_layer, self.cfg.end_layer)):
-            if self.cfg.target_module == "attn_head":
-                for head in self.cfg.heads:
+        if self.cfg.beg_layer is not None and self.cfg.end_layer is not None:
+            for layer in tqdm(range(self.cfg.beg_layer, self.cfg.end_layer)):
+                if self.cfg.target_module == "attn_head":
+                    for head_idx, head in enumerate(self.cfg.heads):
+                        if isinstance(head, int):
+                            hook = self.get_hook(
+                                layer,
+                                head,
+                            )
+                            metric_result = self.compute_metric(hook)
+                            if metric_result is not None:
+                                results[layer, head_idx] = metric_result.cpu().detach() # Compute metric and store in result tensor.
+                else:
                     hook = self.get_hook(
                         layer,
-                        head,
                     )
-                    results[layer, head] = self.compute_metric(hook).cpu().detach() # Compute metric and store in result tensor.
-            else:
-                hook = self.get_hook(
-                    layer,
-                )
-                results[layer] = self.compute_metric(hook).cpu().detach() # Compute metric and store in result tensor.
-            self.model.reset_hooks() # Reset hooks after each layer.
-            if len(results.shape) < 2:
-                results = results.unsqueeze(0) # Unsqueeze the first dimension if result shape is less than 2 to ensure we can easily plot the results
+                    metric_result = self.compute_metric(hook)
+                    if metric_result is not None:
+                        results[layer] = metric_result.cpu().detach() # Compute metric and store in result tensor.
+                self.model.reset_hooks() # Reset hooks after each layer.
+                if len(results.shape) < 2:
+                    results = results.unsqueeze(0) # Unsqueeze the first dimension if result shape is less than 2 to ensure we can easily plot the results
         return results
 
     def get_result_shape(self):
@@ -324,15 +339,19 @@ class Experiment:
         Returns:
             Tuple[int]
         '''
-        if self.cfg.target_module == "attn_head":
-            return (
-                self.cfg.end_layer - self.cfg.beg_layer,
-                len(self.cfg.heads),
-            ) + self.experiment_metrics.shape
-        else:
-            return (
-                self.cfg.end_layer - self.cfg.beg_layer,
-            ) + self.experiment_metrics.shape
+        metric_shape = self.experiment_metrics.shape if self.experiment_metrics.shape is not None else ()
+        if self.cfg.beg_layer is not None and self.cfg.end_layer is not None:
+            if self.cfg.target_module == "attn_head":
+            
+                return (
+                    self.cfg.end_layer - self.cfg.beg_layer,
+                    len(self.cfg.heads),
+                ) + metric_shape
+            else:
+                return (
+                    self.cfg.end_layer - self.cfg.beg_layer,
+                ) + metric_shape
+        
     def compute_metric(self, abl_hook):
         '''
         Computes the metric using the provided hook.
@@ -341,7 +360,7 @@ class Experiment:
         Returns:
             Tensor
         '''
-        mean_metric = torch.zeros(self.experiment_metrics.shape)
+        mean_metric = torch.zeros(self.experiment_metrics.shape) if self.experiment_metrics.shape is not None else None
         self.model.reset_hooks()
         hk_name, hk = abl_hook
         self.model.add_hook(hk_name, hk)
@@ -349,8 +368,14 @@ class Experiment:
         # Only useful if the computation are stochastic. In most cases, only 1 loop. 
         for it in range(self.cfg.nb_metric_iteration):
             self.update_setup(hk_name)
-            mean_metric += self.experiment_metrics.compute_metric(self.model)
-        return mean_metric / self.cfg.nb_metric_iteration
+            metric = self.experiment_metrics.compute_metric(self.model)
+            if mean_metric is None:
+                mean_metric = metric
+            else:
+                mean_metric += metric
+        
+        return mean_metric / self.cfg.nb_metric_iteration if mean_metric is not None else mean_metric
+
 
     def update_setup(self, hk_name):
         '''
@@ -396,36 +421,39 @@ class Ablation(Experiment):
             model: nn.Module,
             ablation_config: AblationConfig,
             metric: ExperimentMetric,
-            semantic_indices: Optional[List[int]] = None,
+            semantic_indices: Optional[Dict[str, List[int]]] = None,
             means_by_groups : bool = False,
             groups: Optional[List[List[int]]] = None,
     ):
         super().__init__(model, ablation_config, metric)
-        assert "AblationConfig" is str(type(ablation_config)), "Config must be of type AblationConfig"
-        assert not (
-            semantic_indices is not None
-        ) and (ablation_config.head_circuit in ["hook_attn_scores", "hook_attn"]) # not implemented for attention scores or attn ablation.
+        assert "AblationConfig" in str(type(ablation_config)), "Config must be of type AblationConfig"
+        
+        if semantic_indices is not None:
+            assert ablation_config.head_circuit not in ["hook_attn_scores", "hook_attn"],  # not implemented for attention scores or attn ablation.
+            "Semantic indices ablation not implemented for attention scores or attn."
         assert not (means_by_groups and groups is None)
         self.semantic_indices = semantic_indices
         self.means_by_groups = means_by_groups
         self.groups = groups # list of (list of indices of element of the group)
-
+        self.ablation_config = ablation_config
         if self.semantic_indices is not None:
             warnings.warn("semantic_indices is not None. It is probably what you want.")
-            self.max_len = max([len(self.model.tokenizer(t).input_ids) for t in self.cfg.mean_dataset])
-            self.get_seq_no_sem(self.max_len)
-
+            
             if self.cfg.mean_dataset is None and ablation_config.compute_means:
-                self.cfg.mean_dataset = self.metric.dataset
+                self.cfg.mean_dataset = self.experiment_metrics.dataset
+            
+            if self.cfg.mean_dataset is not None:
+                self.max_len = max([len(self.model.tokenizer(t).input_ids) for t in self.cfg.mean_dataset])
+                self.get_seq_no_sem(self.max_len)
             
             if self.cfg.abl_type == "random":
                 if self.cfg.batch_size is None:
-                    self.cfg.batch_size = len(self.metric.dataset)
-                if self.cfg.max_seq_len is None:
+                    self.cfg.batch_size = len(self.experiment_metrics.dataset)
+                if self.ablation_config.max_seq_len is None:
                     self.cfg.batch_size = max(
-                        [len(self.metric.dataset[i]) for i in range(len(self.metric.dataset))]
+                        [len(self.experiment_metrics.dataset[i]) for i in range(len(self.experiment_metrics.dataset))]
                     ) # Infer max_seq_len from dataset
-                if self.cfg.cache_means and self.cfg.compute_means:
+                if ablation_config.cache_means and self.cfg.compute_means:
                     self.get_all_mean()
 
     def run_ablation(self):
@@ -436,7 +464,7 @@ class Ablation(Experiment):
         '''
         return self.run_experiment()
     
-    def get_hook(self, layer: int, head: int = None, target_module: str = None):
+    def get_hook(self, layer: int, head: Optional[int] = None, target_module: Optional[str] = None):
         '''
         Returns the ablation hook for the given layer and head.
         Args:
@@ -449,14 +477,14 @@ class Ablation(Experiment):
         hk_name, dim = self.get_target(layer, head, target_module)
         mean = None
         if self.cfg.compute_means:
-            if self.cfg.cache_means:
+            if self.ablation_config.cache_means:
                 if self.means_by_groups:
                     mean = self.mean_cache[hk_name]
                 else:
                     mean = self.get_mean(hk_name)
         
         abl_hook = get_act_hook(
-            self.cfg.abl_fn, mean, head, dim=dim
+            self.ablation_config.abl_fn, mean, head, dim=dim
         ) # Get activation hook as ablation hook
         return (hk_name,abl_hook)
     
@@ -498,7 +526,7 @@ class Ablation(Experiment):
         
         self.model.reset_hooks() # Reset hooks 
         self.model.run_with_hooks(
-            self.cfg.mean_dataset.fwd_hooks==[(hook_name, cache_hook)]
+            self.cfg.mean_dataset, fwd_hooks=[(hook_name, cache_hook)]
         )
         return self.compute_mean(cache[hook_name], hook_name)
     
@@ -520,16 +548,16 @@ class Ablation(Experiment):
 
         if self.cfg.abl_type == "random":
 
-            mean = get_ramdom_sample(
+            mean = get_random_sample(
                 z.clone().flatten(start_dim=0, end_dim=1), # Clone (return a copy with flowing gradients) and flatten (compress multidimensional arrays into one-dimensional ones)
             
             (
                 self.cfg.batch_size,
-                self.cfg.max_seq_len,
+                self.ablation_config.max_seq_len,
             ),
             ) 
 
-        if self.means_by_groups:
+        if self.means_by_groups and self.groups is not None:
             mean = torch.zeros_like(z)
             for group in self.groups:
                 group_mean = torch.mean(z[group], dim=0, keepdim=False).detach().clone() # Create group mean
@@ -542,18 +570,18 @@ class Ablation(Experiment):
         ):
             return mean
         
-        dataset_length = len(self.cfg.mean_dataset)
-
-        for semantic_symbol, semantic_indices in self.semantic_indices.items():
-            mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
-                torch.mean(
-                    z[list(range(dataset_length)), semantic_indices],
-                    dim=0,
-                    keepdim=False,
-                ).clone(),
-                "... -> s ...",
-                s=dataset_length, 
-                ) # Compute the global mean of the semantic-position and write the same mean into every sequence's semantic position
+        dataset_length = len(self.cfg.mean_dataset) if self.cfg.mean_dataset is not None else 0
+        if self.semantic_indices is not None:
+            for semantic_symbol, semantic_indices in self.semantic_indices.items():
+                mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
+                    torch.mean(
+                        z[list(range(dataset_length)), semantic_indices],
+                        dim=0,
+                        keepdim=False,
+                    ).clone(),
+                    "... -> s ...",
+                    s=dataset_length, 
+                    ) # Compute the global mean of the semantic-position and write the same mean into every sequence's semantic position
 
     def get_seq_no_sem(self, max_len: int):
         '''
@@ -651,21 +679,21 @@ class Patching(Ablation):
         '''    
         cache = {}
 
-    def cache_hook(z: Tensor, hook: Tensor):
-        '''
-        Caches hooks.
-        Args:
-            z(Tensor): A tensor of inputs.
-            hook(Tensor): A tensor of hook.
-        Returns:
-            ActivationCache of hook.
-        '''
-        cache[hook_name] = z.detach().to("cuda")
+        def cache_hook(z: Tensor, hook: Tensor):
+            '''
+            Caches hooks.
+            Args:
+                z(Tensor): A tensor of inputs.
+                hook(Tensor): A tensor of hook.
+            Returns:
+                ActivationCache of hook.
+            '''
+            cache[hook_name] = z.detach().to("cuda")
 
-        self.model.reset_hooks()
-        self.model.run_with_hooks(
-            self.cfg.source_dataset, fwd_hooks=[(hook_name, cache_hook)]
-            )
+            self.model.reset_hooks()
+            self.model.run_with_hooks(
+                self.cfg.source_dataset, fwd_hooks=[(hook_name, cache_hook)]
+                )
         return cache[hook_name]
 
 
