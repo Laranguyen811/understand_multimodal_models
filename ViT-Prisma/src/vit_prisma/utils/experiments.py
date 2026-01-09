@@ -289,6 +289,7 @@ class Experiment(ABC):
         self.cfg = experiment_config.adapt_to_model(model)
         self.experiment_metrics = experiment_metrics
         self.cfg.dataset = self.experiment_metrics.dataset
+    
     @abstractmethod
     def get_hook(self, layer: int, head: Optional[int] = None, target_module: Optional[str]=None):
         '''
@@ -532,7 +533,7 @@ class Ablation(Experiment):
     
     def compute_mean(self,
                      z: Tensor,
-                     hk_name: str):
+                     hk_name: str) -> Tensor:
         '''
         Computes mean from input tensors.
         Args:
@@ -541,15 +542,12 @@ class Ablation(Experiment):
         Returns:
             a float or tensor of mean.
         '''
-        mean = (
-            torch.mean(z, dim=0, keepdim=False).detach().clone()
-        ) # Compute mean along the batch dim
-        mean = einops.repeat(mean, "... -> s ...", s=z.shape[0])
+        global_mean = z.mean(dim=0, keepdim=False).detach() # Compute mean along the batch dim
+        mean = global_mean.unsqueeze(0).expand(z.shape[0], -1, -1).clone() # Expand back to batch dimension. Shape [seq, d_model] -> [batch, seq, d_model]
 
         if self.cfg.abl_type == "random":
-
             mean = get_random_sample(
-                z.clone().flatten(start_dim=0, end_dim=1), # Clone (return a copy with flowing gradients) and flatten (compress multidimensional arrays into one-dimensional ones)
+                z.view(-1, z.shape[-1]),
             
             (
                 self.cfg.batch_size,
@@ -564,25 +562,15 @@ class Ablation(Experiment):
                 mean[group] = einops.repeat(group_mean,"... -> s ...",s=len(group)) # Create the mean of the specified group
 
         if (
-            self.semantic_indices is None
-            or "hook_attn" in hk_name
-            or self.means_by_groups
+            self.semantic_indices is not None
+            and "hook_attn" not in hk_name
+            and not self.means_by_groups
         ):
-            return mean
-        
-        dataset_length = len(self.cfg.mean_dataset) if self.cfg.mean_dataset is not None else 0
-        if self.semantic_indices is not None:
-            for semantic_symbol, semantic_indices in self.semantic_indices.items():
-                mean[list(range(dataset_length)), semantic_indices] = einops.repeat(
-                    torch.mean(
-                        z[list(range(dataset_length)), semantic_indices],
-                        dim=0,
-                        keepdim=False,
-                    ).clone(),
-                    "... -> s ...",
-                    s=dataset_length, 
-                    ) # Compute the global mean of the semantic-position and write the same mean into every sequence's semantic position
-
+            batch_idx = torch.arange(z.shape[0], device=z.device)
+            for symbol, indices in self.semantic_indices.items():
+                # Vectorised mean of specific positions across the batch
+                sem_mean = z[batch_idx, indices].mean(dim=0, keepdim=True)
+        return mean
     def get_seq_no_sem(self, max_len: int):
         '''
         Obtains the sequence without semantics.
@@ -594,33 +582,33 @@ class Ablation(Experiment):
         self.seq_no_sem = []
         for pos in range(max_len):
             seq_no_sem_at_pos = []
-            
-            for seq in range(len(self.cfg.mean_dataset)):
-                seq_is_sem = False
-                for semantic_symbol, semantic_indices in self.semantic_indices.items():
-                    if pos == semantic_indices[seq]:
-                        seq_is_sem = True # If the position is the same as the semantic index of sequence, sequence is semantic
-                        break
+            if self.cfg.mean_dataset is not None and self.semantic_indices is not None:
+                for seq in range(len(self.cfg.mean_dataset)):
+                    seq_is_sem = False
+                    for semantic_symbol, semantic_indices in self.semantic_indices.items():
+                        if pos == semantic_indices[seq]:
+                            seq_is_sem = True # If the position is the same as the semantic index of sequence, sequence is semantic
+                            break
                 
-                if self.semantic_indices["end"][seq] < pos:
-                    seq_is_sem = True # If semantic indices at end sequence is smaller than the current position, sequence is semantic
-                
-                if not (seq_is_sem):
-                    seq_no_sem_at_pos.append(seq) # If sequence is not semantic, append sequence to the seq_no_sem_at_pos list
+                    if self.semantic_indices["end"][seq] < pos:
+                        seq_is_sem = True # If semantic indices at end sequence is smaller than the current position, sequence is semantic
+                    
+                    if not (seq_is_sem):
+                        seq_no_sem_at_pos.append(seq) # If sequence is not semantic, append sequence to the seq_no_sem_at_pos list
 
-                self.seq_no_sem.append(seq_no_sem_at_pos.copy()) # Append the copy of seq_no_sem_at_pos to seq_no_sem
+            self.seq_no_sem.append(seq_no_sem_at_pos.copy()) # Append the copy of seq_no_sem_at_pos to seq_no_sem
 
-    def update_setup(self, hook_name):
+    def update_setup(self, hk_name):
         '''
         Updates the setup.
         Args:
-            hook_name(str): A string of hook name
+            hk_name(str): A string of hook name
         Returns:
             None
         ''' 
         if self.cfg.abl_type == "random":
-                self.mean_cache[hook_name] = self.compute_mean(
-                    self.act_cache[hook_name], hook_name
+                self.mean_cache[hk_name] = self.compute_mean(
+                    self.act_cache[hk_name], hk_name
                 ) # Randomise the cache for random ablation
 
 class Patching(Ablation):

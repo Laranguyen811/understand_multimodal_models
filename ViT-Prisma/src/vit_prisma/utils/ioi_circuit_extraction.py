@@ -116,3 +116,24 @@ def process_heads_and_mlps(
     return heads, mlps
 
 
+def get_circuit_replacement_hook(
+        heads_to_remove: Optional[Dict]= None, 
+        mlps_to_remove: Optional[Dict] = None,
+        heads_to_keep: Optional[Dict] = None,
+        mlps_to_keep:Optional[Dict] = None,
+        heads_to_remove2: Optional[Dict] = None,
+        mlps_to_remove2: Optional[Dict] = None,
+        heads_to_keep2: Optional[Dict]=None,
+        mlps_to_keep2: Optional[Dict]=None,
+        dataset:Optional[Any]=None,
+        model:Optional[nn.Module]=None,
+):
+    heads, mlps = process_heads_and_mlps(
+        heads_to_remove=heads_to_remove,
+        mlps_to_remove=mlps_to_remove2,
+        heads_to_keep=heads_to_keep2,
+        mlps_to_keep=mlps_to_keep,
+        dataset=dataset,
+        model=model,
+    )
+    
