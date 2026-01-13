@@ -1,4 +1,4 @@
-from typing import List, Optional, Any, Tuple, Dict
+from typing import List, Optional, Any, Tuple, Dict, Union
 import warnings
 from copy import deepcopy
 from vit_prisma.utils.experiments import (ExperimentMetric,
@@ -14,7 +14,8 @@ import plotly.express as px
 import gc
 import einops
 from torch import nn
-
+from torch import Tensor
+import numpy as np
 
 def list_diff(l1:list,l2:list)-> list:
     '''
@@ -128,12 +129,105 @@ def get_circuit_replacement_hook(
         dataset:Optional[Any]=None,
         model:Optional[nn.Module]=None,
 ):
+    '''
+    Obtains the circuit replacement hook.
+    Args:
+        heads_to_remove(Optional[Dict]): An optional dictionary of heads to remove.
+        mlps_to_remove(Optional[Dict]): An optional dictionary of MLPS to remove.
+        heads_to_keep (Optional[Dict]): An optional dictionary of heads to keep. 
+        mlps_to_keep (Optional[Dict]): An optional dictionary of MLPs to keep.
+        heads_to_remove2 (Optional[Dict]): An optional second dictionary of heads to remove.
+        mlps_to_remove2 (Optional[Dict]): An optional second dictionary of MLPs to remove.
+        heads_to_keep2 (Optional[Dict]): An optional second dictionary of heads to keep.
+        mlps_to_keep2 (Optional[Dict]): An optional second dictionary of MLPs to keep.
+        dataset (Optional[Any]): An optional dataset to take samples from.
+        model (Optional[nn.Module]): An optional model to remove and keep heads and MLPs from.
+    Returns:
+        Tuple of circuit_replmt_hook, heads and mlps
+    '''
+    assert model is not None, "model cannot be None"
+    assert dataset is not None, "dataset cannot be None"
     heads, mlps = process_heads_and_mlps(
-        heads_to_remove=heads_to_remove,
-        mlps_to_remove=mlps_to_remove2,
-        heads_to_keep=heads_to_keep2,
-        mlps_to_keep=mlps_to_keep,
+        heads_to_remove=heads_to_remove, # {(2,3) : List[List[int]]: dimensions dataset_size * datapoint_length
+        mlps_to_remove=mlps_to_remove2, # {2: List[List[int]]: dimensions dataset_size * datapoint_length
+        heads_to_keep=heads_to_keep2, # as above for heads
+        mlps_to_keep=mlps_to_keep, # as above for mlps
         dataset=dataset,
         model=model,
     )
+    if (heads_to_remove2 is not None) or (heads_to_keep2 is not None):
+        heads2, mlps2 = process_heads_and_mlps(
+            heads_to_remove=heads_to_remove2,  # {(2,3) : List[List[int]]: dimensions dataset_size * datapoint_length
+            mlps_to_remove=mlps_to_remove2, # {2: List[List[int]]: dimensions dataset_size * datapoint_length
+            heads_to_keep=heads_to_keep2, # as above for heads
+            mlps_to_keep=mlps_to_keep2, # as above for mlps
+            dataset=dataset,
+            model=model,
+        )
+    else: 
+        heads2, mlps2 = heads, mlps
+
+    
+    dataset_length = dataset.N 
+
+    if hasattr(dataset, "N"):
+        dataset_length = int(getattr(dataset,"N")) # If dataset has attribute "N", assign dataset_length to the integer of N
+    elif hasattr(dataset, "__len__"):
+        dataset_length = len(dataset) # If dataset has attribute "__len__"(length), assign dataset_length to the length of dataset
+    else:
+        raise AttributeError("Dataset has no attribute 'N' and is not sized (no __len__).")
+    
+    def circuit_replmt_hook(z:Tensor,
+                            act,
+                             hook) -> Tensor:
+        '''
+        Obtains circuit replacement hooks.
+        Args:
+            z(Tensor): A tensor of inputs
+            act: Activation
+            hook (Tensor): A tensor of hook points
+        Returns:
+            A tensor of z
+        '''
+        layer = int(hook.name.split(".")[1]) # Obtain the layer
+        # Create a range of indices for the first dimension
+        batch_indices = torch.arange(dataset_length) 
+        if "mlp" in hook.name and layer in mlps:
+            # Extract the specific indices for the second dimension
+            z_idx = mlps[layer]
+            act_idx = mlps2[layer]
+
+            # Vectorisation
+            z[batch_indices, z_idx, :] = act[batch_indices, act_idx, :]
+             # Ablate all the indices in mlps[layer] with batch size of data_length; mean may cntain semantic ablation
+
+        if "attn.hook_result" in hook.name and (layer, hook.ctx["idx"]) in heads:
+            heads_idx = heads[(layer, hook.ctx["idx"])]
+            heads2_idx = heads2[layer,hook.ctx["idx"]]
+            z[batch_indices, heads_idx,:] = act[batch_indices, heads2_idx, :]
+
+        return z
+    
+    return circuit_replmt_hook, heads, mlps
+
+def join_lists(
+        l1:List[list], l2:List[int]
+)-> Union[List,int]:
+    '''
+    Joins two list together. 
+    Args:
+        l1(List[list]): A list of list.
+        l2(List(int)): A list of integers.
+    Returns:
+        A list of list and integers.
+    '''
+    
+
+
+    
+
+
+    
+
+
     

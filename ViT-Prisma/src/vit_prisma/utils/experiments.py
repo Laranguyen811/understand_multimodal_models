@@ -218,7 +218,7 @@ class AblationConfig(ExperimentConfig):
             cache_means: bool = False,
             batch_size: Optional[int] = None,
             max_seq_len: Optional[int] = None,
-            abl_fn: Callable[[Tensor,Tensor,HookPoint], Tensor] = None,
+            abl_fn: Optional[Callable[[Tensor,Tensor,HookPoint], Tensor]] = None,
             **kwargs,
     ):
         super().__init__(**kwargs)
@@ -263,7 +263,7 @@ class PatchingConfig(ExperimentConfig):
             self, 
             source_dataset: Optional[List[str]] = None,
             target_dataset: Optional[List[str]] = None,
-            patch_fn : Callable[[Tensor,Tensor,HookPoint], Tensor] = None,
+            patch_fn : Optional[Callable[[Tensor,Tensor,HookPoint], Tensor]] = None,
             cache_act : bool = True,
             **kwargs,
     ):
@@ -291,7 +291,7 @@ class Experiment(ABC):
         self.cfg.dataset = self.experiment_metrics.dataset
     
     @abstractmethod
-    def get_hook(self, layer: int, head: Optional[int] = None, target_module: Optional[str]=None):
+    def get_hook(self, layer: int, head: Optional[Union[int, str]] = None, target_module: Optional[str]=None) -> Tuple[str, Callable]:
         '''
         Returns the hook for the given layer and head.
         Must be implemented by child classes.
@@ -314,7 +314,7 @@ class Experiment(ABC):
             for layer in tqdm(range(self.cfg.beg_layer, self.cfg.end_layer)):
                 if self.cfg.target_module == "attn_head":
                     for head_idx, head in enumerate(self.cfg.heads):
-                        if isinstance(head, int):
+                        if isinstance(head, int) and head is not None:
                             hook = self.get_hook(
                                 layer,
                                 head,
@@ -388,7 +388,7 @@ class Experiment(ABC):
         '''
         pass
 
-    def get_target(self, layer: int, head: Optional[int] = None, target_module: Optional[str] = None):
+    def get_target(self, layer: int, head: Optional[Union[int, str]]= None, target_module: Optional[str] = None):
         '''
         Returns the target module name for the given layer and head (pass target_module to override config settings).
         Args:
@@ -427,7 +427,7 @@ class Ablation(Experiment):
             groups: Optional[List[List[int]]] = None,
     ):
         super().__init__(model, ablation_config, metric)
-        assert "AblationConfig" in str(type(ablation_config)), "Config must be of type AblationConfig"
+        assert "AblationConfig" in str(type(ablation_config)) or "PatchingConfig" in str(type(ablation_config)), "Config must be of type AblationConfig or PatchingConfig"
         
         if semantic_indices is not None:
             assert ablation_config.head_circuit not in ["hook_attn_scores", "hook_attn"],  # not implemented for attention scores or attn ablation.
@@ -465,7 +465,7 @@ class Ablation(Experiment):
         '''
         return self.run_experiment()
     
-    def get_hook(self, layer: int, head: Optional[int] = None, target_module: Optional[str] = None):
+    def get_hook(self, layer: int, head: Optional[Union[int, str]] = None, target_module: Optional[str] = None):
         '''
         Returns the ablation hook for the given layer and head.
         Args:
@@ -478,7 +478,7 @@ class Ablation(Experiment):
         hk_name, dim = self.get_target(layer, head, target_module)
         mean = None
         if self.cfg.compute_means:
-            if self.ablation_config.cache_means:
+            if isinstance(self.ablation_config, AblationConfig) and self.ablation_config.cache_means:
                 if self.means_by_groups:
                     mean = self.mean_cache[hk_name]
                 else:
@@ -611,7 +611,7 @@ class Ablation(Experiment):
                     self.act_cache[hk_name], hk_name
                 ) # Randomise the cache for random ablation
 
-class Patching(Ablation):
+class Patching(Experiment):
     def __init__(
             self, 
             model: nn.Module,
@@ -619,8 +619,9 @@ class Patching(Ablation):
             metric: ExperimentMetric
     ):
         super().__init__(model, patching_config, metric)
-        assert "PatchingConfig" is str(type(patching_config))
-        if self.cfg.cache_act:
+        assert "PatchingConfig" in str(type(patching_config))
+        self.patching_config = patching_config
+        if self.patching_config.cache_act:
             self.get_all_act()
         
     def run_patching(self):
@@ -630,7 +631,7 @@ class Patching(Ablation):
         return self.run_experiment()
     
         
-    def get_hook(self, layer: int, head:Optional[str]=None, target_module:Optional[str]=None, patch_fn:Optional[Callable]=None)-> Tuple:
+    def get_hook(self, layer: int, head:Optional[Union[int, str]]=None, target_module:Optional[str]=None, patch_fn:Optional[Callable]=None)-> Tuple:
         '''
         Gets hook.
         Args:
@@ -642,15 +643,15 @@ class Patching(Ablation):
             Tuple of hook name and hook.
         '''
         hook_name, dim = self.get_target(layer, head, target_module=target_module) # Get the hook name and the dimension
-        if self.cfg.cache_act:
+        if self.patching_config.cache_act:
             act = self.act_cache[hook_name] # Get activation on the source dataset if config has cache_act
         else:
             act = self.get_act(hook_name)  # Otherwise, get activation from hook name
             
         if patch_fn is None:
-            patch_fn = self.cfg.patch_fn # if patch function is None, use patch_fn in config
+            patch_fn = self.patching_config.patch_fn # if patch function is None, use patch_fn in config
             
-        hook = get_act_hook(self.cfg.patch_fn, act, head, dim=dim) # Get the activation hook
+        hook = get_act_hook(self.patching_config.patch_fn, act, head, dim=dim) # Get the activation hook
         return(hook_name, hook)
     def get_all_act(self):
             '''
@@ -659,7 +660,7 @@ class Patching(Ablation):
             self.act_cache = {}
             self.model.reset_hooks() # Reset hooks
             self.model.cache_all(self.act_cache) # Cache all activations
-            self.model(self.cfg.source_dataset) # Use the model with source dataset
+            self.model(self.patching_config.source_dataset) # Use the model with source dataset
 
     def get_act(self, hook_name: str):
         '''
@@ -680,7 +681,7 @@ class Patching(Ablation):
 
             self.model.reset_hooks()
             self.model.run_with_hooks(
-                self.cfg.source_dataset, fwd_hooks=[(hook_name, cache_hook)]
+                self.patching_config.source_dataset, fwd_hooks=[(hook_name, cache_hook)]
                 )
         return cache[hook_name]
 
