@@ -113,18 +113,6 @@ def calculate_gelu(input):
     '''
     return 0.5 * input * (1 + torch.tanh(np.sqrt(2 / np.pi) * (input + 0.044715 * input ** 3)))
 
-def calculate_gelu_fast(input):
-    '''
-    Implementation of the gelu activation function (fast version).
-    '''
-    return 0.5 * input * (1 + torch.tanh(0.7978845608 * (1 + 0.044715 * input ** 2)))
-
-def calculate_solu(input):
-    '''
-    Implementation of the solu (Softmax Linear Unit) activation function.
-    LayerNorm implemented by the MLP class. 
-    '''
-    return input * F.softmax(input, dim=-1) 
 
 def keep_single_column(
         dataset: datasets.arrow_dataset.Dataset,

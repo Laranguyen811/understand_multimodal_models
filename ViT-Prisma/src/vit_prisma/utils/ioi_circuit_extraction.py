@@ -210,9 +210,9 @@ def get_circuit_replacement_hook(
     
     return circuit_replmt_hook, heads, mlps
 
-def join_lists(
-        l1:List[list], l2:List[int]
-)-> Union[List,int]:
+def join_lists_nested(
+        l1:List[list], l2:List[int],
+)-> Tensor:
     '''
     Joins two list together. 
     Args:
@@ -221,7 +221,43 @@ def join_lists(
     Returns:
         A list of list and integers.
     '''
+    rows = list(torch.nested.nested_tensor(l1).unbind()) # Unbind the nested structure into a list of separate tensors for speed
+    l2_tensor = torch.tensor(l2)
+    updated_list = [torch.cat([rows[i], l2_tensor[i].unsqueeze(0)]) for i in range(len(rows))]
     
+    # Rebind into a single NestedTensor
+    return torch.nested.as_nested_tensor(updated_list)
+
+
+def get_extracted_idx(idx_list:List[str], dataset: Any) -> Tensor:
+    '''
+    Obtains extracted index from a list of indices. 
+    Args:
+        idx_list(List[str]): A list of indices
+        dataset(Any): A dataset
+    Returns:
+        an integer of index
+    '''
+    int_idx = [[] for i in range(len(dataset.sentences))]
+    # Get all integer IDs in one pass
+    for idx_name in idx_list:
+        try:
+            int_idx_to_add = [
+                int(x) for x in list(dataset.word_idx[idx_name])
+            ]
+        except:
+            print(dataset.word_idx, idx_name)
+            raise ValueError(
+                f"Index {idx_name} not found in the dataset. Please check the spelling and ensure the index is in the dataset."
+            )
+    int_idx_result = join_lists_nested(int_idx,int_idx_to_add)
+        #int_idx = [list(int_idx_result[i].tolist()) for i in range(len(int_idx_result))]
+    return int_idx_result
+
+#def get_mlps_circuit(dataset, mlps):
+#    if isinstance(mlps, list):
+
+
 
 
     
