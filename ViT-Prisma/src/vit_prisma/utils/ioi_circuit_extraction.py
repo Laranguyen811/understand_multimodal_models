@@ -254,8 +254,8 @@ def get_extracted_idx(idx_list:List[str], dataset: Any) -> Tensor:
         #int_idx = [list(int_idx_result[i].tolist()) for i in range(len(int_idx_result))]
     return int_idx_result
 
-#def get_mlps_circuit(dataset, mlps):
-#    if isinstance(mlps, list):
+def get_mlps_circuit(dataset, mlps):
+    if isinstance(mlps, list):
 
 
 

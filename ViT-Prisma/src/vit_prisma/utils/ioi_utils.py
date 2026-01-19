@@ -350,6 +350,61 @@ def scatter_attention_and_contribution(
         df, columns=[f"Attention Probability on Inputs", f"Dot w Name Embed", "Input Type", ""]
     )
 
+def basis_change(x: Tensor, y: Tensor) -> Tuple[Tensor, Tensor]:
+    '''
+    Changes the basis (1, 0) and (0,1) to the basis 1/sqrt(2) (1,1) and 1/sqrt(2) (-1,1) 
+    Args:
+        x(Tensor): A tensor of x.
+        y(Tensor): An array of y.
+    Returns:
+        A tuple of 2 new tensors 
+    '''
+    return (x+y)/np.sqrt(2), (y-x)/np.sqrt(2)
+
+
+def add_arrow(fig: Figure, end_point, start_point, color="black"):
+    '''
+    Adds arrow to the figure.
+    '''
+    x_start, y_start = start_point
+    x_end, y_end = end_point
+
+    fig.add_annotation(
+        x=x_start,
+        y=y_start,
+        ax=x_end,
+        ay=y_end,
+        xref="x",
+        yref="y",
+        axref="x",
+        ayref="y",
+        text="", # If you want only the arrow
+        showarrow=True,
+        arrowhead=3,
+        arrowsize=1,
+        arrowwidth=1,
+        arrowcolor=color,
+    )
+
+def compute_next_tok_dot_prod(
+        model: Any,
+        input: Tensor,
+        l: Union[int,str],
+        h: Union[int,str],
+        batch_size:int = 1,
+        seq_tokenised: bool = False,
+
+) -> List:
+    '''
+    Computes the dot product of the model's next token logits, with the logits of the next token in the sentences. Suupports batch_size > 1.
+    Args:
+        model(Any): A model.
+        input(Tensor): A tensor of input.
+        l(Union[int,str]): A string or integer of layer.
+        h(Union[int,str]): A string or integer of head
+    '''
+
+
 
 
 
