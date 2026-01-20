@@ -401,8 +401,200 @@ def compute_next_tok_dot_prod(
         model(Any): A model.
         input(Tensor): A tensor of input.
         l(Union[int,str]): A string or integer of layer.
-        h(Union[int,str]): A string or integer of head
+        h(Union[int,str]): A string or integer of head.
+        batch_size(int): an integer of batch size. Defaults to 1.
+        seq_tokenised(bool): A boolean of whether the sequence is tokenised or not. Defaults to False. 
     '''
+    assert len(input) % batch_size == 0
+    cache = {}
+    model.cache_some(
+        cache, lambda x: x in [f"blocks.{l}.attn.hook_result"], device="cuda"
+    )
+    if seq_tokenised:
+        toks = input # If sequence is tokenised, toks will be assigned to input
+    else:
+        toks = model.tokenizer(input, padding=False).input_ids # Otherwise, tokenise input
+    
+    prod = []
+    model_unembed = (
+        model.unembed.W_U.detach().cpu()
+    ) 
+    for i in tqdm(range(len(input)) // batch_size):
+        model.run_with_hooks(
+            input[i * batch_size : (i + 1) * batch_size],
+            reset_hooks_start=False,
+            reset_hooks_end=False,
+        )
+        n_seq = len(input)
+        for s in range(basis_change):
+            idx = i * batch_size + s
+
+            attn_result = cache[f"blocks.{l}.attn.hook_result"][
+                s, : (len(toks[idx]) - 1), h, :
+            ].cpu()
+            next_tok = toks[idx][1:]
+
+            next_tok_dir = model_unembed[next_tok]
+
+            prod.append(
+                torch.einsum("hd,hd->h", attn_result,next_tok_dir)
+                .detach()
+                .cpu()
+                .numpy()
+            )
+        return prod
+    
+def get_gray_scale(val:float,min_val:float,max_val:float)->float:
+    '''
+    Gets Gray Scale.
+    '''
+    max_col = 255
+    min_col = 232
+    max_val = max_val
+    min_val = min_val
+    val = val
+    return int(min_col + ((max_col - min_col) / max_val - min_val) * (val - min_val))
+    
+def get_opacity(val: float, min_val: float, max_val: float)-> float:
+    '''
+    Gets opacity.
+    '''
+    max_val = max_val
+    min_val = min_val
+    return (val - min_val) / (max_val - min_val)
+    
+def print_toks_with_color(toks: Tensor, 
+                              color, 
+                              show_low:bool=False, 
+                              show_high:bool=False,
+                              show_all:bool=False)-> None:
+    '''
+    Prints tokens with color.
+    '''
+    min_v = min(color)
+    max_v = max(color)
+    for i,t in enumerate(toks):
+        c = get_gray_scale(color[i], min_v, max_v)
+        text_c = 232 if c > 240 else 255
+        show_value = show_all
+        if show_low and c < 232 + 5:
+            show_value = True
+        if show_high and c > 255 - 5:
+            show_value = True
+            
+        if show_value:
+            if len(str(np.round(color[i],2)).split(".")) > 1:
+                val = (
+                    str(np.round(color[i],2)).split(".")[0]
+                ) 
+                + "."
+                + str(np.round(color[i],2)).split(".")[1][:2]# If show value, if the length of string of rounded color at i to 2 decimals greater than 1, 
+                    # val will be the first value of the said string plus "." plus the second to third values of the said string
+            else:
+                val = str(np.round(color[i],2))
+                
+            print(f"\033[48;5;{c}m\033[38;5;{text_c}m{t}({val})\033[0;0m", end="") # Print the  ANSI escape sequence
+        else:
+            print(f"\033[48;5;{c}m\033[38;5;{text_c}m{t}\033[0;0m", end="") # Print the  ANSI ( American National Standards Institute) escape sequence
+
+def convert_tok_color_scale_to_html(toks: Tensor, color):
+    '''
+    Converts the token color scale to html.
+    '''
+    min_v = min(color)
+    max_v = max(color)
+    # Display min and max color in header
+    html = f'<span style="background-color: rgba({255},{0},{0}, {0})">Min: {min_v:.2f} </span>'
+    + " "
+    + f'<span style="background-color: rgba({255},{0},{0}, {255})">Max: {max_v:.2f}</span>'
+    + "<br><br><br>" # HTML string
+    for i,t in enumerate(toks):
+        op = get_opacity(color[i], min_v, max_v)
+
+        html += f'<span style="background-color: rgba({255},{0},{0}, {op})">{t}</span>'
+    return html
+
+def export_tok_col_to_file(
+        folder: str,
+        head: Union[str,int],
+        layer: Union[str,int],
+        tok_col,
+        toks: Tensor,
+        chunk_name
+):
+    if not os.path.isdir(folder):
+        os.mkdir(folder) # If the path is not the directory of folder, make directory for folder
+    
+    if not os.path.isdir(os.path.join(folder,f"layer_{layer}_head_{head}")):
+        os.mkdir(os.path.join(folder,f"layer_{layer}_head_{head}"))
+
+    filename = f"{folder}/layer_{layer}_head_{head}/layer_{layer}_head_{head}_{chunk_name}.html"
+    all_html = ""
+    for i in range(len(tok_col)):
+        all_html += (
+            f"<br><br><br>==============Sequence {i}=============<br><br><br>"
+            + convert_tok_color_scale_to_html(toks[i], tok_col[i])
+        )
+    with open(filename, "w") as f:
+        f.write(all_html)
+
+
+def get_sample_activation(
+        model: Any, 
+        dataset: Any,
+        hook_names: List[str],
+        n: int
+)-> Dict[Any, torch.Tensor]:
+    '''
+    Samples data.
+    Args:
+        model(Any): A model.
+        dataset(Any): A dataset to sample from.
+        hook_names(List[str]): A list of strings of hook names.
+        n(int): An integer representing the number of data points to sample.
+    Returns:
+        A dictionary of cache 
+    '''
+    data = np.random.choice(dataset, n) # Create randomly sampled data
+    cache = {}
+    model.reset_hooks()
+    model.cache_some(cache, lambda name: name in hook_names)
+    _ = model(data)
+    model.reset_hooks()
+    return cache
+
+def get_head_param(
+        model:Any,
+        module: str,
+        layer:Union[str,int],
+        head:Union[str,int],
+)->Tensor:
+    if module == "OV":
+        W_v = model.blocks[layer].attn.W_V[head] # Matrix W_v
+        W_o = model.blocks[layer].attn.W_O[head] # Matrix W_o
+        W_ov = torch.einsum("hd,bh->db",W_v,W_o) # Matrix W_ov
+        return W_ov 
+    if module == "QK":
+        W_k = model.blocks[layer].attn.W_K[head] # Matrix W_k 
+        W_q = model.blocks[layer].attn.W_Q[head] # Matrix W_q
+        W_qk = torch.einsum("hd,hb->db", W_q,W_k) # Matrix W_qk 
+        return W_qk
+    if module =="Q":
+        W_q = model.blocks[layer].attn.W_Q[head] # Matrix W_q
+        return W_q
+    if module == "K":
+        W_k = model.blocks[layer].attn.W_Q[head] # Matrix W_k
+        return W_k
+    if module == "V":
+        W_v = model.blocks[layer].attn.W_V[head] # Matrix W_v
+        return W_v
+    if module == "O":
+        W_o = model.blocks[layer].attn.W_O[head] # Matrix W_o
+    raise ValueError(f"Module {module} not supported")
+
+
+
+    
 
 
 
