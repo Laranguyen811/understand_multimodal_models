@@ -254,8 +254,50 @@ def get_extracted_idx(idx_list:List[str], dataset: Any) -> Tensor:
         #int_idx = [list(int_idx_result[i].tolist()) for i in range(len(int_idx_result))]
     return int_idx_result
 
-def get_mlps_circuit(dataset, mlps):
-    if isinstance(mlps, list):
+def do_circuit_extraction(
+        heads_to_remove: Optional[Dict]=None,
+        mlps_to_remove: Optional[Dict]=None,
+        heads_to_keep: Optional[Dict]=None,
+        mlps_to_keep: Optional[Dict]=None,
+        dataset:Optional[Any]=None,
+        mean_dataset: Optional[Any]=None,
+        model:Optional[Any]=None,
+        metric:Optional[str]=None,
+        excluded:Optional[List]=[],
+        return_hooks:bool=False,
+        hooks_dict:bool=False,
+)-> Tuple[Any,Tensor]:
+    '''
+    Extracts circuits and performs ablation. 
+    Args:
+        heads_to_remove (Optional[Dict]): An optional dictionary of heads to remove. Defaults to None.
+        mlps_to_remove (Optional[Dict]): An optional dictionary of mlps to remove. Defaults to None.
+        heads_to_keep (Optional[Dict]): An optional dictionary of heads to keep. Defaults to None.
+        mlps_to_keep (Optional[Dict]): An optional dictionary of mlps to keep. Defaults to None.
+        dataset (Optional[Any]): An optional dataset. Defaults to None.
+        mean_dataset (Optional[Any]): An optional mean dataset. Defaults to None.
+        model (Optional[Any]): An optional model. Defaults to None.
+        metric (Optional[str]): A optional string of a metric. Defaults to None.
+        excluded (Optional[List]): An optional list of excluded heads that we do not put any hooks on. Defaults to an empty list.
+        return_hooks (bool): A boolean of whether to return hooks or not. Defaults to False.
+        hooks_dict (bool): A boolean of whether to put hook in a dictionary or not. Defaults to False.
+    Returns:
+        A Tuple of a model and a tensor of ablation 
+    '''
+
+    # Check whether we are either in keep XOR remove moved from the args
+    ablation, heads, mlps = get_circuit_replacement_hook(
+        heads_to_remove=heads_to_remove,
+        mlps_to_remove=mlps_to_remove,
+        heads_to_keep=heads_to_keep,
+        mlps_to_keep=mlps_to_keep,
+        dataset=dataset,
+        model=model
+    )
+    metric = ExperimentMetric(
+        metric=metric, dataset=dataset.input, relative_metric=False
+    )
+
 
 
 

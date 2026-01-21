@@ -593,6 +593,144 @@ def get_head_param(
     raise ValueError(f"Module {module} not supported")
 
 
+def get_hook_name(model: Any,
+                  module: str,
+                  layer: int,
+                  head: int,
+                  )-> str:
+    '''
+    Gets hook names from the model.
+    Args:
+        model(Any): A model.
+        module(str): A string of a module name.
+        layer(int): An integer of a layer number.
+        head (int): An integer of a head number.
+    Returns:
+        A string of a hook name
+    '''
+    assert layer < model.cfg["n_layers"]
+    assert head < model.cfg["n_heads"]
+    if module == "OV" or module == "QK":
+        return f"blocks.{layer}.hook_resid_pre"
+    raise NotImplementedError("Module must be either OV or QK.")
+
+def compute_composition(
+        model: Any,
+        dataset: List[str],
+        n_samples: int, 
+        l_1: int,
+        h_1:int,
+        l_2:int,
+        h_2:int,
+        module_1: str,
+        module_2: str,
+
+) -> Tensor:
+    '''
+    Computes the composition between two different modules.
+    Args:
+        model (Any): A model.
+        dataset (List[str]): A list of strings of a dataset.
+        n_samples (int): An integer of n samples.
+        l_1 (int): An integer of the first layer number.
+        h_1 (int): An integer of the first head number.
+        l_2 (int): An integer of the second layer number.
+        h_2 (int): An integer of the second head number.
+        module_1 (str): A string of the first module.
+        module_2 (str): A string of the second module.
+    Returns:
+        A Tensor of the difference between the composition scores and the baseline    
+    '''
+    W_1 = get_head_param(model, module_1, l_1, h_1).detach() # Obtain the param matrix for the first module
+    W_2 = get_head_param(model, module_2, l_2, h_2).detach() # Obtain the param matrix for the second module
+    W_12 = torch.einsum("d b,b c -> d c", W_2, W_1) # Obtain the summation between W_1 and W_2
+    comp_scores = []
+
+    baselines = []
+    hook_name_1 = get_hook_name(module_1,l_1,h_1) 
+    hook_name_2 = get_hook_name(module_2, l_2, h_2)
+    activations = get_sample_activation(
+        model, dataset, [hook_name_1, hook_name_2], n_samples
+    ) # Get the activations from the first hook name and the second hook name
+    
+    x_1 = activations[hook_name_1].squeeze().detach()
+    x_2 = activations[hook_name_2].squeeze().detach()
+
+    # Calculate the composition scores and append to the comp_scores list
+    c_12 = torch.norm(torch.einsum("d e, b s e -> b s d", W_12, x_1), dim=-1) # Obtain the composition score W_12
+    c_1 = torch.norm(torch.einsum("d e, b s e -> b s d", W_1, x_1 ), dim=-1) # Obtain the composition score of W_1
+    c_2 = torch.norm(torch.einsum("d e , b s e -> b s d", W_2, x_2), dim=-1) # Obtain the composition score of W_2
+    comp_score = c_12/(c_1 * c_2 * 768 ** 0.5) # Calculate the composition score of all embeddings
+    comp_scores.append(comp_score)
+
+    # Compute baseline
+    for _ in range(10):
+        W_1b = torch.randn(W_1.shape, device=W_1.device) * W_1.std() # Create a tensor of random numbers from a normal distribution in the shape of W_1 multiplied by the standard deviation of W_1 
+        W_2b = torch.randn(W_2.shape, device=W_2.device) * W_2.std() # Create a tensor of random numbers from a normal distribution in the shape of W_2 multiplied by the standard deviation of W_2
+        W_12b = torch.einsum("db, bc -> dc", W_2b, W_1b) # Summing over b 
+        c_12b = torch.norm(torch.einsum("d e , b s e -> b s d", W_12b, x_1), dim=-1) # Sum between W_12b and x_1 over e along the last dimension and normalise the summation
+        c_1b = torch.norm(torch.einsum("d e, b s e -> b s d", W_2b, x_1), dim=-1) # Sum between W_1b and x_1 over e along the last dimension and normalise the summation
+        c_2b = torch.norm(torch.einsum("d e, b s e -> b s d", W_2b, x_2), dim=-1) # Sum between W_1b and x_1 over e along the last dimension and normalise the summation
+        baseline = c_12b/(c_1b * c_2b * 768 ** 0.5) # Calculate the baseline for all embeddings
+        baselines.append(baseline)
+
+    return (
+        torch.stack(comp_scores.mean().cpu().numpy()
+        - torch.stack(baselines).mean().cpu().numpy())
+    )
+
+def compute_composition_OV_QK(
+    model: Any,
+    dataset: List[str],
+    n_samples: int,
+    l_1: int, 
+    h_1: int,      
+    l_2: int,
+    h_2: int,
+    mode: str,
+) -> None:
+    '''
+    Computes composition scores between OV and QK matrices. 
+    Args:
+        model(Any): A model.
+        dataset(List[str]): A list of strings of a dataset.
+        n_samples(int): An integer of n samples.
+        l_1(int): An integer of the 1st layer number.
+        h_1(int): An integer of the 1st head number.
+        l_2(int): An integer of the 2nd layer number.
+        h_2(int): An integer of the 2nd head number.
+        mode(str): A string of mode.
+    Returns:
+        None
+    '''
+
+    assert mode in ["Q", "K"]
+    W_OV = get_head_param(model,"OV", l_1, h_1).detach() # Obtain matrix OV
+    W_QK = get_head_param(model, "QK", l_2, h_2).detach() # Obtain matric QK
+
+    if mode == "Q":
+        W_12 = torch.einsum("d b , d c", W_QK, W_OV) # Sum over d between W_QK and W_OV
+    elif mode == "K":
+        W_12 = torch.einsum(" b c , b c -> d c", W_OV, W_QK) # Sum over b between transposed OV and QK
+
+def patch_all(z: Tensor,
+              source_act: Tensor,
+              hook: Tensor
+              ):
+    '''
+    Patches all.
+    Args:
+        z(Tensor): A tensor of an input.
+        source_act(Tensor): A tensor of the source activations.
+        hook (Tensor): A tensor of hook.
+    Returns:
+        A Tensor of source activations 
+    '''
+    return source_act
+
+
+    
+        
 
     
 

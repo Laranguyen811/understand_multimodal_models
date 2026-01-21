@@ -49,7 +49,7 @@ class ExperimentMetric:
         self.dataset = dataset # Dataset to run the metric on.
         self.shape = None # Shape of the metric output.
 
-    def set_baseline(self, model):
+    def set_baseline(self, model: Any)-> None:
         '''
         Sets the baseline value for relative metrics.
         Args:
@@ -62,7 +62,7 @@ class ExperimentMetric:
         self.baseline = base_metric
         self.shape = base_metric.shape
         
-    def compute_metric(self,model):
+    def compute_metric(self,model:Any)-> Tensor:
         assert (self.baseline is not None) or not (
             self.relative_metric
         ), "Baseline must be set for relative mean."
@@ -465,7 +465,7 @@ class Ablation(Experiment):
         '''
         return self.run_experiment()
     
-    def get_hook(self, layer: int, head: Optional[Union[int, str]] = None, target_module: Optional[str] = None):
+    def get_hook(self, layer: int, head: Optional[Union[int, str]] = None, target_module: Optional[str] = None)-> Tuple[str, Tensor]:
         '''
         Returns the ablation hook for the given layer and head.
         Args:
