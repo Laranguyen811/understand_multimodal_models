@@ -298,6 +298,59 @@ def do_circuit_extraction(
         metric=metric, dataset=dataset.input, relative_metric=False
     )
 
+    if mean_dataset is None:
+        mean_dataset = dataset
+    
+    config = AblationConfig(
+        abl_type="custom",
+        abl_fn=ablation,
+        mean_dataset=mean_dataset.toks.long(),
+        target_module="attn_head",
+        head_circuit="result",
+        cache_means=True, # circuit extraction *has* to cache means
+        verbose=True, 
+    )
+
+    abl = Ablation(
+        model,
+        config,
+        metric, 
+        semantic_indices=None,
+        means_by_groups=True,
+        groups=dataset.groups,
+    )
+    model.reset_hooks()
+
+    hooks = {}
+
+    heads_keys = list(heads.keys())
+    # Sort in lexicographic order
+    heads_keys.sort(key=lambda x: (x[0], x[1]))
+
+    for (
+        layer,
+        head,        
+    ) in heads_keys: 
+        if (layer, head) in excluded:
+            continue
+        assert (layer, head) not in hooks, ((layer, head), "already in hooks")
+        hooks[(layer,head)] = abl.get_hook(layer, head)
+
+    for layer in mlps.keys():
+        hooks[(layer, None)] = abl.get_hook(layer, head=None, target_module="mlp")
+
+    if return_hooks:
+        if hooks_dict:
+            return hooks
+        
+        else: 
+            return list(hooks.values())
+    
+    else:
+        for hook in hooks.values():
+            model.add_hook(*hook)
+        return model, abl
+
 
 
 

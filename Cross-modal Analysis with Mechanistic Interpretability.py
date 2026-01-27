@@ -279,6 +279,7 @@ clip_image_logits, clip_image_cache = clip_model.run_with_cache(
     remove_batch_dim=True,  # Remove batch dimension for simplicity
 )
 print(type(clip_image_logits), type(clip_image_cache))
+print(f"Shape of clip image logits: {clip_image_logits.shape}")
 print(f"CLIP Image cache:",clip_image_cache)
 print(f"Type of CLIP cache:{type(clip_image_cache)}")
 # %%

@@ -410,7 +410,7 @@ print(f"Region cosine similarity difference between correct and distractor: {reg
 
 # %%  
 ioi_metric_df = pd.DataFrame({
-'Metric': ['Probability Difference', 'Cosine Similarity Difference', 'Logits Difference', 'Correct Probability', 'Distractor Probability','Patch-level Cosine Similarity Difference'],
+'Metric': ['Log Probability Difference', 'Cosine Similarity Difference', 'Logits Difference', 'Correct Log Probability', 'Distractor Log Probability','Patch-level Cosine Similarity Difference'],
     'Value': [np.round(probs[ioi_test_case['correct_idx']].item() - probs[ioi_test_case['distractor_idx']].item(),3), np.round(cos_sim_diff.item(),3), logits_diff, correct_prob, distractor_prob, region_cos_sim_diff]
 })
 ioi_metric_df.style.set_properties(**{'white-space': 'pre-wrap'})

@@ -62,6 +62,15 @@ loaded_images_data = VisualGenomeDataset(loaded_images,labels=labels,transform=t
 print(f"First image:{(loaded_images)}")
 print(f"Type of loaded images:{type(loaded_images)}")
 
+def plot_ellipse(fig: Figure, xs, ys, color="MediumPurple", nstd:int=1, name:str=""):
+    '''
+    Plots ellipse.
+
+    '''
+    mu = np.mean(xs), np.mean(ys)
+    sigma = np.cov(xs, ys)
+    w, h, t = ellip
+
 def clear_gpu_mem():
     """
     Clear GPU memory.
@@ -347,8 +356,233 @@ def scatter_attention_and_contribution(
         pass 
 
     viz_df = pd.DataFrame(
-        df, columns=[f"Attention Probability on Inputs", f"Dot w Name Embed", "Input Type", ""]
+        df, columns=[f"Attention Probability on Inputs", f"Dot w Embed", "Input Type", ""]
     )
+    fig = px.scatter(
+        viz_df,
+        x=f"Attention Probability on Inputs",
+        y=f"Dot w Embed",
+        color = "Input Type",
+        hover_data=[""],
+        color_discrete_sequence=["rgb(114,255,100)","rgb(201,165,247)"],
+        title=f"How Strong {layer_no}.{head_no} Writes in the Embed Direction Relative to Attention Probability",
+    )
+    if return_vals:
+        return
+    if return_fig:
+        return fig
+    else:
+        fig.show()
+     
+
+def handle_all_and_std(returning: Tensor, all: bool, std: bool)-> Tensor:
+    '''
+    Handles all and standard deviation.
+    Args:
+        returning (Tensor): A returning tensor. 
+        all (bool): A boolean of whether it is all or not.
+        std (bool): A boolean of whether it is a standard deviation or not.
+    Returns:
+        A returning Tensor 
+    '''
+    
+    if all and not std:
+        return returning
+    if std:
+        if all:
+            first_bit = (returning).detach().cpu()
+        else:
+            first_bit = (returning).mean().detach().cpu()
+        return first_bit, torch.std(returning).detach().cpu()
+    return (returning).mean().detach().cpu()
+
+def get_attention_on_token(
+        model: Any, 
+        dataset: Any, 
+        layer: Union[str,int], 
+        head_idx:int, 
+        token: Tensor,
+        all:bool=False,
+        std:bool=False,
+        scores:bool=False, 
+
+):
+    '''
+    Gets the attention on token 'token' from the END position. 
+    Args:
+        model (Any): A model.
+        dataset (Any): A dataset.
+        layer (Union[str,int]): A string or integer of the layer number.
+        head_idx (int): An integer of head index.
+        token (Tensor): A tensor of token. 
+        all (bool): A boolean of whether it is all or not. Defaults to False.
+        std (bool): A boolean of whether it is a standard deviation or not. Defaults to False.
+        scores (bool): A boolean of whether there are scores or nt. Defaults to False.
+    Returns:
+        A returning Tensor
+    '''
+
+    hook_name_raw = "blocks.{}.attn.hook_attn" + ("_scores" if scores else "") # Obtain the raw hook name
+    hook_name = hook_name_raw.format(layer) # Obtain the formatted hook name
+    cache = {}
+    model.cache_some(cache, lambda x:x == hook_name)
+    logits = model(dataset.toks.long()).detach()
+    atts = cache[hook_name][
+        torch.arange(dataset.N),
+        head_idx
+    ]
+    return handle_all_and_std(atts, all, std)
+
+def sort_positions(x: torch.Tensor) -> Tensor:
+    '''
+    Sorts the order of the elements of x.
+    Args:
+        x (torch.Tensor): A tensor of input x.
+    Returns:
+        A Tensor of sorted x
+    '''
+    return torch.argsort(x, dim=-1)
+
+def rank_posses(
+        model: Any,
+        dataset: Any,
+        prompts: str,
+        all: bool=False,
+        std:bool=False,
+) -> Tensor:
+    '''
+    Ranks of the IO (Indirect Object) token in all the tokens.
+    Args:
+        model(Any): A model.
+        dataset(Any): A dataset.
+        all(bool): A boolean of whether it is all or not. Defaults to False.
+        std(bool): A boolean of whether it is standard deviation or not. Defaults to False.
+    Returns:
+        A returning Tensor
+    '''
+    prompts = prompts
+    logits = model(prompts).detach().cpu()
+    warnings.warn("+1ing")
+    end_logits = logits[
+        torch.arange(len(prompts)), dataset.idx[-1] + 1, :
+        ]
+    positions = torch.argsort(end_logits, dim=1)
+    io_positions = positions[torch.arange(len(prompts)), dataset.io_tokenIDs]
+
+    return handle_all_and_std(io_positions, all, std)
+
+def calculate_probs(
+        model: Any,
+        dataset: Any,
+        all: bool=False,
+        std: bool=False,
+        type:str="io",
+        verbose: bool = False,
+)-> Tensor:
+    '''
+    Calculate the IO probabilities. 
+    Args:
+        model (Any): A model.
+        dataset (Any): A dataset.
+        all (bool): A boolean of whether it is all or not. Defaults to False.
+        std (bool): A boolean of whether it is standard deviation. Defaults to False.
+        type (str): A string of type of cases. Defaults to "io".
+        verbose (bool): A boolean of verbose or not. Defaults to False.
+    Returns:
+        A returning Tensor
+    '''
+
+    logits = model(
+        dataset.toks.long()
+    ).detach()
+
+    end_logits = logits[
+        torch
+    ]
+def get_top_tokens_and_probs(
+        model: Any,
+        prompt: str,
+) -> Tuple[Tensor, Tensor]:
+    '''
+    Gets the top tokens and probabilities.
+    Args:
+        model (Any): A model.
+        prompt (str): A string of prompts.
+    Returns:
+        A tuple of Tensor of top tokens and Tensor of top probabilities.
+    '''
+    logits, tokens = model(prompt, return_type="logits_and_tokens")
+    logits = logits.squeeze(0) # Remove the batch dimension
+    end_probs = torch.softmax(logits, dim=-1) # Obtain the softmax of logits along the last dimension as probabilities
+    return end_probs, tokens
+
+def get_all_subsets(L: List)-> List[List]:
+    '''
+    Gets all subsets of L.
+    Args:
+        L (List): A list of L.
+    Returns:
+        A list of all subsets of L.
+    '''
+    if len(L) == 0:
+        return [[]]
+    else:
+        rest = get_all_subsets(L[1:]) # Recursively get all subsets of the rest of the list from index 1 onwards
+        return rest + [[L[0]] + subset for subset in rest] # Return the rest plus the first element concatenated with each subset in rest
+
+def ellipse_arc(x_center:float=0,
+                y_center:float=0,
+                ax1:List[float]=[1,0],
+                ax2:List[float]=[0,1],
+                a: int=1,
+                b: int=1,
+                N:int=100)-> Tuple[List,List]:
+    '''
+    Creates an ellipse arc.
+    Args:
+        x_center (float): A float of x-coordinate center of the ellipse. Defaults to 0.
+        y_center (float): A float of y-coordinate center of the ellipse. Defaults to 0.
+        ax1 (List[float]): A list of floats of axis 1, an orthogonal vector representation. Defaults to [1,0].
+        ax2 (List[float]): A list of floats of axis 2, an orthogonal vector representation. Defaults to [0,1].
+        a (int): An integer of a, the ellipse parameter. Defaults to 1.
+        b (int): An integer of b, the ellipse parameter. Defaults to 1.
+        N (int): An integer of N. Defaults to 100.
+    Returns:
+        A tuple of lists of x and y coordinates.
+    '''
+    if abs(np.linalg.norm(ax1) -1) > 1e-06 or abs(np.linalg.norm(ax2) -1) > 1e-06:
+        raise ValueError("ax1 and ax2 must be unit vectors.")
+    if abs(np.dot(ax1,ax2)) > 1e-06:
+        raise ValueError("ax1 and ax2 must be orthogonal.")
+    t = np.linspace(0, 2 * pi, N) # Create a linear space from 0 to 2pi with N points
+
+    # Ellipse parameterisation with respect to a system of axes of directions a1, a2
+    xs = a * cos(t)
+    ys = b * sin(t)
+
+    # Rotation matrix
+    R = np.array([ax1, ax2]).T
+
+    # Coordinates of the ellipse points with respect to the system of axes [1,0], [0,1] with origin (0,0)
+    xp, yp = np.dot(R, [xs, ys])
+    x = xp + x_center
+    y = yp + y_center
+    return x, y
+
+def ellipse_wht(sigma:float) -> Tuple[float, float, float]:
+    '''
+    Computes the width, height and theta of an ellipse from the covariance matrix sigma.
+    Args:
+        sigma (float): A float of sigma.
+    Returns:
+        A tuple of width, height, and theta.
+    '''
+    vals, vecs = np.linalg.eigh(sigma)
+    order = vals.argsort()[::-1] # Sort eigenvalues in descending order
+    vals, vecs = vals[order], vecs[:,order] # Reorder eigenvalues and eigenvectors
+
+    theta = np.arctan2(*vecs[:,0][::-1]) # Compute the angle theta
+
 
 def basis_change(x: Tensor, y: Tensor) -> Tuple[Tensor, Tensor]:
     '''
