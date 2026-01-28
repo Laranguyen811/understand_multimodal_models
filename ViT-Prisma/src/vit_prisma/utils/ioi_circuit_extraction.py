@@ -254,6 +254,55 @@ def get_extracted_idx(idx_list:List[str], dataset: Any) -> Tensor:
         #int_idx = [list(int_idx_result[i].tolist()) for i in range(len(int_idx_result))]
     return int_idx_result
 
+def get_heads_circuit(dataset: Any, circuit: Dict,tokens:Dict, excluded:list=[], mlp0:bool=False)->Dict:
+    '''
+    Gets heads circuit.
+    Args:
+        dataset(Any): A dataset.
+        circuit(Dict): A dictionary of circuits.
+        excluded(list): A list of excluded heads that we do not put any hooks on. Defaults to an empty list.
+        mlp0(bool): A boolean of whether to include MLP0 or not. Defaults to False.
+    Returns:
+        A dictionary of heads circuit.
+    '''
+    for excluded_item in excluded:
+        assert (
+            isinstance(excluded_item, tuple) or excluded_item in circuit
+        ), excluded_item
+    
+    heads_to_keep = {}
+
+    for circuit_class in circuit:
+        if circuit_class in excluded:
+            continue
+        for head in circuit[circuit_class]:
+            if head in excluded:
+                continue
+            heads_to_keep[head] = get_extracted_idx(
+                tokens[head], dataset
+            )
+    if mlp0:
+        raise ValueError("mlp0 not implemented yet. It needs special handling from get_mlps_circuit.")
+    return heads_to_keep
+def get_mlps_circuit(dataset: Any, mlps:list, heads_list:list) -> Dict:
+    '''
+    Gets MLPs circuit.
+    Args:
+        dataset(Any): A dataset.
+        mlps(list): A list of MLPs.
+    Returns:
+        A dictionary of MLPs circuit.
+    '''
+    if isinstance(mlps, list):
+        mlps = {i: heads_list for i in mlps} # Create a dictionary of MLPs circuit
+    mlps_to_keep = {}
+    for i in mlps:
+        mlps_to_keep[i] = get_extracted_idx(
+            mlps[i], dataset
+        )
+    return mlps_to_keep
+    
+
 def do_circuit_extraction(
         heads_to_remove: Optional[Dict]=None,
         mlps_to_remove: Optional[Dict]=None,

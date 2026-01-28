@@ -1,5 +1,7 @@
 from contextlib import suppress
 import warnings
+
+from traitlets import Float
 import plotly.graph_objects as go
 import numpy as np
 from numpy import sin, cos, pi
@@ -39,6 +41,7 @@ from vit_prisma.prisma_tools.hook_point import HookedRootModule, HookPoint
 from torch import Tensor
 from vit_prisma.dataloaders.visual_genome import load_images, set_up_vg_paths, VisualGenomeDataset, transform
 from vit_prisma.utils.data_utils.visual_genome.visual_genome_objects import create_dict, base_dir
+from vit_prisma.utils.ioi_circuit_extraction import do_circuit_extraction
 ALL_COLORS = px.colors.qualitative.Dark2
 CLASS_COLORS = {
     "region mover": ALL_COLORS[0],
@@ -582,7 +585,105 @@ def ellipse_wht(sigma:float) -> Tuple[float, float, float]:
     vals, vecs = vals[order], vecs[:,order] # Reorder eigenvalues and eigenvectors
 
     theta = np.arctan2(*vecs[:,0][::-1]) # Compute the angle theta
+    if theta < 0:
+        theta += 2 * pi
+    width, height = 2 * np.sqrt(vals) # Compute width and height
+    return width, height, theta
 
+def plot_ellipse(fig: Figure, xs, ys, color="MediumPurple", nstd:int=1, name:str=""):
+    '''
+    Plots the ellipse. 
+    '''
+    mu = np.mean(xs), np.mean(ys)
+    sigma = np.cov(xs, ys)
+    w, h, t = ellipse_wht(sigma)
+    w *= nstd
+    h *= nstd
+    print(f"Ellipse params - w: {w}, h: {h}, theta: {t} rad")
+
+    x, y = ellipse_arc(
+        x_center=mu[0],
+        y_center=mu[1],
+        ax1=[cos(t), sin(t)],
+        ax2=[-sin(t), cos(t)],
+        a=w,
+        b=h,
+        
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x,
+            y=y,
+            mode="lines",
+            line=dict(size=20, color=color),
+            name=name,
+        )
+    )
+
+def get_heads_from_nodes(nodes: Dict, dataset: Any)-> Dict:
+    '''
+    Gets heads from nodes.
+    Args:
+        nodes (Dict): A dictionary of nodes.
+        dataset (Any): A dataset.
+    Returns:
+        A dictionary of heads
+    '''
+    heads_to_keep_tok = {}
+    for h,t in nodes:
+        if h not in heads_to_keep_tok:
+            heads_to_keep_tok[h] = []
+        if t not in heads_to_keep_tok[h]:
+            heads_to_keep_tok[h].append(t)
+    
+    heads_to_keep = {}
+    for h in heads_to_keep_tok:
+        heads_to_keep[h] = get_extracted_idx(heads_to_keep_tok[h], dataset)
+    return heads_to_keep
+
+def calculate_logits_to_ave_logit_diff(
+        logits: Tensor,
+        ioi_test_case: Dict,
+        per_prompt: Bool = False,
+    ) -> Float[Tensor, "batch"]:
+    '''
+    Returns the average logit difference between the correct and distractor prompts.
+    Args:
+        logits: Logits tensor of shape (batch, seq, d_model).
+        per_prompt: If True, returns the logit difference per prompt.
+    Returns:
+        Average logit difference tensor of shape (batch,).
+    '''
+    # Calculate the logit difference between correct and distractor rounded to 3 decimal places
+    logits_diff = np.round((logits[:, ioi_test_case['correct_idx']] - logits[:, ioi_test_case['distractor_idx']]).item(),3)
+    # If per_prompt is True, return the logit difference per prompt
+    
+    # Calculate mean logit difference rounded to 3 decimal places
+    mean_logits_diff = np.round(logits_diff.mean().item(),3)
+    
+    return logits_diff if per_prompt else mean_logits_diff
+
+def circuit_from_nodes_logit_diff(model: Any, 
+                                  dataset: Any,
+                                  nodes: Dict,)-> Float[Tensor, "batch"]:
+    '''
+    Calculates the logit difference from the circuit defined by nodes.
+    Args:
+        model (Any): A model.
+        dataset (Any): A dataset.
+        nodes (Dict): A dictionary of nodes.
+    Returns:
+        A float tensor of logit difference.
+    '''
+    heads_to_keep = get_heads_from_nodes(nodes, dataset)
+    model.reset_hooks()
+    model, _ = do_circuit_extraction(
+        model=model,
+        heads_to_keep=heads_to_keep,
+        mlps_to_remove={},
+        dataset=dataset,
+    )
+    return calculate_logits_to_ave_logit_diff(model,dataset,all=False)
 
 def basis_change(x: Tensor, y: Tensor) -> Tuple[Tensor, Tensor]:
     '''
