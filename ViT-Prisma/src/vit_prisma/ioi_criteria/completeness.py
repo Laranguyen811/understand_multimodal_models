@@ -77,6 +77,7 @@ from vit_prisma.utils.ioi_circuit_extraction import (
 
 )
 from copy import deepcopy
+from vit_prisma.utils.detect_architectures import detect_architecture
 
 plotly_colors = [
     "#636EFA",
@@ -151,11 +152,165 @@ def measure_faithfulness(circuits:Dict, naive: Dict, dataset:Any, model:Any)-> f
         logit_diff_circuit = calculate_logits_to_ave_logit_diff(model, dataset)
         print (f"Logit diff after circuit extraction: {logit_diff_circuit}")
     
+    circuit = deepcopy(naive)
+    print("Working with", circuit)
+    cur_metric = logit_diff # Define the current metric
+
+    run_original = True
+    print("Are we running the original experiment?", run_original)
+
+    if run_original:
+        circui_perf = []
+        perf_by_sets = []
+        for G in tqdm(list(circuit.keys())+["none"]):
+            if G == "ablation":
+                continue
+            print_gpu_mem(G)
+            excluded_classes = []
+            if G != "none":
+                excluded_classes.append(G)
+            heads_to_keep = get_heads_circuit(
+                dataset, excluded=excluded_classes, circuit=circuit
+            )
+            model.reset_hooks()
+            model, _ = do_circuit_extraction(
+                model=model,
+                heads_to_keep=heads_to_keep,
+                mlps_to_remove={},
+                dataset=dataset,
+                mean_dataset=mean_dataset
+            )
+            torch.cuda.empty_cache() # Clear GPU memory
+            cur_metric_broken_circuit, std_broken_circuit = cur_metric(
+                model, dataset, std=True, all=True
+            ) # Measure the current metric broken circuit
+            # Adding back the whole model
+            excl_class = list(circuit.keys())
+            if G != "none":
+                excl_class.remove(G) # If we are adding back G, exclude all other classes but G
+            G_heads_to_remove = get_heads_circuit(
+                dataset, excluded=excl_class, circuit=circuit
+            )
+            torch.cuda.empty_cache() # Clear GPU memory
+
+            model.reset_hooks()
+            model, _ = do_circuit_extraction(
+                model=model,
+                heads_to_keep=G_heads_to_remove,
+                mlps_to_remove={},
+                dataset=dataset,
+                mean_dataset=mean_dataset
+            )
+
+            torch.cuda.empty_cache() # Clear GPU memory
+            cur_metric_coble, std_coble_circuit = cur_metric(
+                model, dataset, std=True,all=True
+            ) # Measure the current metric coble circuit
+            print(cur_metric_coble.mean(), cur_metric_broken_circuit.std())
+            torch.cuda.empty_cache()
+
+            # Metric (M\G)
+            on_diagonals =[] # List to store on-diagonal values
+            off_diagonals = [] # List to store off-diagonal values
+            for i in range(len(cur_metric_coble)):
+                circui_perf.append({
+                    "removed_set_id": G,
+                    "ldiff_broken":float(cur_metric_broken_circuit[i].cpu().numpy()),
+                    "ldiff_coble":float(cur_metric_coble[i].cpu().numpy()),
+                    "input":dataset.inputs[i],
+                    "template":dataset.templates[i],
+                })
+
+                x, y = basis_change(
+                    circui_perf[-1]["ldiff_broken"],
+                    circui_perf[-1]["ldiff_coble"],
+                )
+                model_architecture = detect_architecture(model)
+
+                if model_architecture in ['bert', 'gpt2','gpt_neo','gpt_generic','t5','llama','mistral','claude','falcon', 'mpt', 'bloom','opt']:
+                    circui_perf[-1]["on_diagonal"] = x
+                    circui_perf[-1]["off_diagonal"] = y
+                    on_diagonals.append(x)
+                    off_diagonals.append(y)
+                else:
+                    print("Architecture does not have on and off diagonal metrics.")
+            perf_by_sets.append({
+                "removed_group": G,
+                "mean_cur_metric_broken": float(mean([item["ldiff_broken"] for item in circui_perf if item["removed_set_id"] == G])),
+                "mean_cur_metric_coble": float(mean([item["ldiff_coble"] for item in circui_perf if item["removed_set_id"] == G])),
+                "std_cur_metric_broken": float(std_broken_circuit.cpu().numpy()),
+                "std_cur_metric_coble": float(std_coble_circuit.cpu().numpy()),
+                "mean_on_diagonal": float(mean(on_diagonals)) if len(on_diagonals) > 0 else None, # Calculate mean on-diagonal if available
+                "mean_off_diagonal": float(mean(off_diagonals)) if len(off_diagonals) > 0 else None, # Calculate mean off-diagonal if available
+                "std_on_diagonal": float(np.std(on_diagonals)) if len(on_diagonals) > 0 else None,
+                "std_off_diagonal": float(np.std(off_diagonals)) if len(off_diagonals) > 0 else None,
+                "color": CLASS_COLORS[G],
+                "symbol": "diamond-x",
+            })
+            perf_by_sets[-1]["mean_abs_diff"]= abs(
+                perf_by_sets[-1]["mean_cur_metric_broken"]
+                - perf_by_sets[-1]["mean_cur_metric_coble"]
+            ).mean()
+
+            df_circuit_perf = pd.DataFrame(circui_perf)
+            circuit_classes = sorted(perf_by_sets, key=lambda x: x["mean_abs_diff"]) # Sort circuit classes by mean absolute difference
+            df_perf_by_sets = pd.DataFrame(perf_by_sets)
     
+    return (df_circuit_perf, circuit_classes, df_perf_by_sets)
 
+def create_circuit_figures(circuit_perf:List, circuit_classes:List, df_circuit_perf:pd.DataFrame) -> None:
+    '''
+    Creates circuit figures based on performance by sets and circuit classes.
+    Arguments:
+        perf_by_sets (List): List of performance metrics by sets.
+        circuit_classes (List): List of circuit classes.
+        df_circuit_perf (pd.DataFrame): DataFrame containing circuit performance data.
+    Returns:
+        None
+    '''
+    with open(f"sets/perf_by_classes_{ctime()}.json","w") as f:
+        json.dump(circuit_perf, f)
+    
+    fig = go.Figure()
 
+    # Add the grey region and make the dotted line
+    minx = -2
+    maxx = 6
+    eps = 1.0
+    xs = np.linspace(minx - 1, maxx + 1, 100)
+    ys = xs
 
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="lines",
+            name=f"x=y",
+            line=dict(color="grey", dash="dash")
+        )
+    )
 
+    rd_set_added = False
+    for i, perf in enumerate(perf_by_sets):
+        fig.add_trace(
+            go.Scatter(
+                x=[perf["mean_cur_metric_broken"]],
+                y=[perf["mean_cur_metric_coble"]],
+                mode="markers",
+                name=perf["removed_group"],
+                marker=dict(
+                    color=perf["color"],
+                    size=10,
+                    symbol=perf["symbol"],
+                ),
+                    showlegend=(
+                        ("1" in perf["removed_group"][-2:])
+                        or ("Set" in perf["removed_group"])
+                    ),
+                )
+            )
 
-
-
+    fig.update_xaxes(title_text="F(C \ K)")
+    fig.update_yaxes(title_text="F(M \ K)")
+    fig.update_xaxes(showgrid=True,gridcolor="black",gridwidth=1)
+    fig.update
