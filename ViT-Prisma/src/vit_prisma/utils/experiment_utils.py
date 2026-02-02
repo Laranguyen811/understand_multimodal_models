@@ -11,7 +11,7 @@ from functools import lru_cache
 import transformers
 import json
 from transformers import AutoTokenizer
-from typing import Any, Optional, Tuple, Union, List
+from typing import Any, Optional, Tuple, Union, List, Bool
 from torch import Tensor
 from vit_prisma.prisma_tools.factored_matrix import FactoredMatrix
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
@@ -404,5 +404,21 @@ def composition_scores(
     return comp_norms/r_norms/l_norms # Return the composition scores
 
 
+def verify_activations(model: Any,
+                       text:str) -> Bool:
+    '''
+    Verifies activations in the attention matrix.
+    Args:
+        model (Any): a model.
+        text (str): A string of text.
+    Returns:
+        A boolean of whether the layer 0 patter from Q and K is close to the layer 0 pattern from cache or not. 
+    '''
+    tokens = model.to_tokens(text)
+    logits, cache = model.run_with_cache(tokens, remove_batch_dim=True)
+    layer_0_pattern_from_cache = model["pattern", 0]
+    Q = cache["q",0]
+    K = cache["k",0]
+    
 
             

@@ -78,6 +78,7 @@ from vit_prisma.utils.ioi_circuit_extraction import (
 )
 from copy import deepcopy
 from vit_prisma.utils.detect_architectures import detect_architecture
+import os
 
 plotly_colors = [
     "#636EFA",
@@ -230,6 +231,7 @@ def measure_faithfulness(circuits:Dict, naive: Dict, dataset:Any, model:Any)-> f
                 if model_architecture in ['bert', 'gpt2','gpt_neo','gpt_generic','t5','llama','mistral','claude','falcon', 'mpt', 'bloom','opt']:
                     circui_perf[-1]["on_diagonal"] = x
                     circui_perf[-1]["off_diagonal"] = y
+                    layer_0_pattern_from_cache = 
                     on_diagonals.append(x)
                     off_diagonals.append(y)
                 else:
@@ -313,4 +315,18 @@ def create_circuit_figures(circuit_perf:List, circuit_classes:List, df_circuit_p
     fig.update_xaxes(title_text="F(C \ K)")
     fig.update_yaxes(title_text="F(M \ K)")
     fig.update_xaxes(showgrid=True,gridcolor="black",gridwidth=1)
-    fig.update
+    fig.update_yaxes(showgrid=True, gridcolor="black",gridwidth=1)
+    fig.update_layout(paper_bgcolor="white", plot_bgcolors="white")
+
+    # Use these lines to scale Scalable Vector Graphics (SVGs) properly 
+    fig.update_xaxes(range=[minx, maxx])
+    fig.update_yaxes(range=[minx, maxx])
+    fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
+    fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
+
+    fig.update_yaxes(scaleanchor="x", scaleratio=1,)
+
+    circuit_to_export = "natural"
+    fpath = f"circuit_completeness_{circuit_to_export}_CIRCUIT_at_{ctime()}.svg"
+    if os.path.exists("/path/to/svgs"):
+        fpath = "svgs" + fpath  
