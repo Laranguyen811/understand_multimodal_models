@@ -22,7 +22,8 @@ import pandas as pd
 from vit_prisma.utils.experiment_utils import (
     to_numpy,
     get_corner,
-    print_gpu_mem
+    print_gpu_mem,
+    verify_activations
 )
 from vit_prisma.models.activation_fns import quick_gelu
 from vit_prisma.prisma_tools.hook_point import HookedRootModule, HookPoint
@@ -35,7 +36,7 @@ from vit_prisma.utils.experiments import (
     get_act_hook,
 )
 
-from typing import Any, Callable, Dict, List, Set, Tuple, Union, Optional, Iterable
+from typing import Any, Callable, Dict, List, Set, Tuple, Union, Optional, Iterable, Bool
 import itertools
 import numpy as np
 from tqdm import tqdm
@@ -228,10 +229,9 @@ def measure_faithfulness(circuits:Dict, naive: Dict, dataset:Any, model:Any)-> f
                 )
                 model_architecture = detect_architecture(model)
 
-                if model_architecture in ['bert', 'gpt2','gpt_neo','gpt_generic','t5','llama','mistral','claude','falcon', 'mpt', 'bloom','opt']:
+                if model_architecture in ['bert', 'gpt2','gpt_neo','gpt_generic','t5','llama','mistral','claude','falcon', 'mpt', 'bloom','opt'] or verify_activations(model) is True:
                     circui_perf[-1]["on_diagonal"] = x
                     circui_perf[-1]["off_diagonal"] = y
-                    layer_0_pattern_from_cache = 
                     on_diagonals.append(x)
                     off_diagonals.append(y)
                 else:
@@ -330,3 +330,58 @@ def create_circuit_figures(circuit_perf:List, circuit_classes:List, df_circuit_p
     fpath = f"circuit_completeness_{circuit_to_export}_CIRCUIT_at_{ctime()}.svg"
     if os.path.exists("/path/to/svgs"):
         fpath = "svgs" + fpath  
+    fig.write_image(fpath)
+    fig.show()
+
+def perform_greedy_search(circuit: Dict, naive: Dict, dataset: Any, mean_dataset: Any, skip_greedy: Bool = False, do_asserts: Bool = False):
+    '''
+    Performs greedy search if specified on the circuit.
+    Args:
+        circuit(Dict): A dictionary of circuits. 
+        naive(Dict): A dictionary of heads.
+        skip_greedy (Bool): A boolean of whether to skip greedy search or not. Defaults to False.
+        do_asserts (Bool): A boolean of whether to assert or not. Defaults to False. 
+    Returns: 
+        None
+    '''
+    skip_greedy = True
+    do_asserts = False
+
+    for doover in range(int(1e9)):
+        if skip_greedy:
+            break
+        for raw_circuit_idx, raw_circuit in enumerate([circuit,naive]):
+            if doover == 0 and raw_circuit_idx == 0:
+                print("Starting with the NAIVE.")
+                continue
+
+            circuit = deepcopy(raw_circuit) # Make a deep copy of raw circuit
+            all_nodes = get_all_nodes(circuit)
+            all_circuit_nodes = [head[0] for head in all_nodes] # Get all nodes from the circuit
+            circuit_size = len(all_circuit_nodes)
+
+            # Note: These hooks are entirely ioi-dataset and circuit dependent
+            complement_hooks = (
+                do_circuit_extraction(
+                    model=model,
+                    heads_to_keep={},
+                    mlps_to_remove={},
+                    dataset=dataset,
+                    mean_dataset=mean_dataset,
+                    return_hooks=True,
+                    hooks_dict=True,
+
+                )
+            ) 
+
+            assert len(complement_hooks) == 144
+            
+            heads_to_keep = get_heads_from_nodes(all_nodes, dataset)
+            assert len(heads_to_keep) == circuit_size, (
+                len(heads_to_keep),
+                circuit_size,
+            )
+
+            #circuit_hooks = 
+
+

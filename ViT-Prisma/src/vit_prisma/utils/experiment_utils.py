@@ -417,8 +417,16 @@ def verify_activations(model: Any,
     tokens = model.to_tokens(text)
     logits, cache = model.run_with_cache(tokens, remove_batch_dim=True)
     layer_0_pattern_from_cache = model["pattern", 0]
-    Q = cache["q",0]
-    K = cache["k",0]
+    Q = cache["q",0] # Obtain the Q (query) vectors from cache 
+    K = cache["k",0] # Obtain the K (key) vectors from cache 
+    seq, n_head, d_K = K.shape
+    device = ("cuda" if torch.cuda.is_available() else "cpu")
+    Q_K_attention = einops.einsum(Q, K, "... n h, ... n h -> n ...")
+    mask = torch.triu(torch.ones((seq, seq),dtype=torch.bool), diagonal=1).to(device) # Create a mask by creating the seq x seq matrix first 
+    
+    layer0_masked_attn = Q_K_attention.masked_fill_(mask, -1e9) # Fill the attention patterns from Q and K with mask and near-zero matrix
+    softmaxed = (layer0_masked_attn / d_K** 0.5).softmax(-1) # Scale the masked attention by the square root of the number of heads d_K and apply the softmax function to the masked attention  
+    return torch.testing.assert_close(layer_0_pattern_from_cache,softmaxed) # Test to see if the attention patterns from layer 0 from cache and the softmaxed attention patterns from Q and K are numerically close
     
 
             
