@@ -36,7 +36,7 @@ from vit_prisma.utils.experiments import (
     get_act_hook,
 )
 
-from typing import Any, Callable, Dict, List, Set, Tuple, Union, Optional, Iterable, Bool
+from typing import Any, Callable, Dict, List, Set, Tuple, Union, Optional, Iterable, Bool, Tensor
 import itertools
 import numpy as np
 from tqdm import tqdm
@@ -333,7 +333,7 @@ def create_circuit_figures(circuit_perf:List, circuit_classes:List, df_circuit_p
     fig.write_image(fpath)
     fig.show()
 
-def perform_greedy_search(circuit: Dict, naive: Dict, dataset: Any, mean_dataset: Any, skip_greedy: Bool = False, do_asserts: Bool = False):
+def perform_greedy_search(circuit: Dict, naive: Dict, dataset: Any, mean_dataset: Any, heads_to_keep:Dict, skip_greedy: Bool = False, do_asserts: Bool = False):
     '''
     Performs greedy search if specified on the circuit.
     Args:
@@ -382,6 +382,122 @@ def perform_greedy_search(circuit: Dict, naive: Dict, dataset: Any, mean_dataset
                 circuit_size,
             )
 
-            #circuit_hooks = 
+            circuit_hooks = do_circuit_extraction(
+                model=model,
+                heads_to_keep=heads_to_keep,
+                mlps_to_remove={},
+                dataset=dataset,
+                mean_dataset=mean_dataset,
+                return_hooks=True,
+                hooks_dict=True,
+            ) 
+
+            model_rem_hooks = do_circuit_extraction(
+                model=model,
+                heads_to_remove=heads_to_keep,
+                mlps_to_remove={},
+                dataset=dataset,
+                mean_dataset=mean_dataset,
+                return_hooks=True,
+                hooks_dict=True,
+            )
+
+            circuit_hooks_keys = list(circuit_hooks.keys())
+
+            for layer, head_idx in circuit_hooks_keys:
+                if (layer, head_idx) not in heads_to_keep.keys():
+                    circuit_hooks.pop((layer,head_idx))
+            assert len(circuit_hooks) == circuit_size, (len(circuit_hooks), circuit_size)
+
+            return all_circuit_nodes, model_rem_hooks, complement_hooks
+
+
+def cobble_eval(model: Any,model_rem_hooks:Tensor, nodes=List):
+    '''
+    Evaluates nodes.
+    Args:
+        model (Any): A model.
+        nodes (List): A list of nodes.
+    Returns:
+        Tensor of current logit differences.
+    '''
+    model.reset_hooks()
+    for head in nodes:
+        model.add_hook(*model_rem_hooks[head])
+    cur_logit_diff = logit_diff(model, dataset) # Current logit difference
+    model.reset_hooks()
+    return cur_logit_diff
+
+def circuit_eval(model: Any, all_circuit_nodes:List, nodes: List, complement_hooks:Tensor):
+    '''
+    Evaluate circuits.
+    Args:
+        model(Any): A model.
+        nodes (List): A list of nodes. 
+    Returns:
+        A Tensor of curent logit difference.
+    '''
+    model.reset_hooks()
+    for head in all_circuit_nodes:
+        if head not in nodes:
+            model.add_hook(*complement_hooks[head])
+    for head in complement_hooks:
+        if head not in all_circuit_nodes or head in nodes:
+            model.add_hook(*complement_hooks[head])
+    cur_logit_diff = logit_diff(model, dataset)
+    model.reset_hooks()
+    return cur_logit_diff
+
+def difference_eval(model: Any, nodes: List)-> Tensor:
+    '''
+    Evaluates difference: completeness metric |F(C\nodes) - F(M\nodes)|.
+    Args:
+        model(Any): A model.
+        nodes(List): A list of nodes.
+    Returns:
+        Tensor of completeness score.
+    '''
+    c = circuit_eval(model, nodes)
+    m = cobble_eval(model, nodes)
+    return torch.abs(c - m) # The absolute values of logits of the difference between c and m 
+
+# Actual experiments
+
+def run_experiments(perf_by_sets:List,circuit:Dict, do_asserts:Bool=False):
+    '''
+    Runs actual experiments. 
+    Args:
+        perf_by_sets(List): A list of performance by sets.
+        circuit(Dict): A dictionary of circuits.
+        do_asserts (Bool): A boolean of whether to assert or not. Defaults to False.
+    Returns:
+
+    '''
+    do_asserts = True
+    if do_asserts:
+        c = circuit_eval(model, [])
+        m = cobble_eval(model, [])
+        print(f"{c}, {m} {torch.abs(c-m)}")
+
+    for entry in perf_by_sets: # Check backward compatibility
+        circuit_class = entry["removed_group"] # Includes "None"
+        assert circuit_class in list(circuit.keys()) + ["none"], circuit_class
+        nodes = (
+            circuit[circuit_class] if circuit_class in circuit.keys() else []
+        )
+
+        c = circuit_eval(model, nodes)
+        m = cobble_eval(model, nodes)
+        assert torch.allclose(entry["mean_cur_metric_cobble"], m), (
+            entry["mean_cur_metric_cobble"],
+            m,
+            circuit_class,
+        ) # Check to see if the results are close to each other: mean_cur_metric_cobble and m; mean_cur_metric_cobble, c and circuit class
+
+        print(f"{circuit_class} {c}, {m} {torch.abs(c -m)}")
+        
+
+
+
 
 
