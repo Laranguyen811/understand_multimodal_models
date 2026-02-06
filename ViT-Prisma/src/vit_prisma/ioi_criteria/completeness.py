@@ -494,7 +494,33 @@ def run_experiments(perf_by_sets:List,circuit:Dict, do_asserts:Bool=False):
             circuit_class,
         ) # Check to see if the results are close to each other: mean_cur_metric_cobble and m; mean_cur_metric_cobble, c and circuit class
 
+        assert torch.allclose(entry["mean_cur_metric_broken"],c),(
+            entry["mean_cur_metric_broken"],
+            c,
+            circuit_class,
+        )
         print(f"{circuit_class} {c}, {m} {torch.abs(c -m)}")
+
+
+def add_key_to_json_dict(fname:str, key:str, value:str)-> None:
+    '''
+    Adds key to json dictionary.
+    Args:
+        fname(str): A string of file name.
+        key(str): A string of key.
+        value(str): A string of value.
+    Returns:
+        None 
+    '''
+    with open(fname, "r") as f:
+        d = json.load(f)
+    d[key] = value
+    with open(fname,"w") as f:
+        json.dump(d,f)
+
+#def do_new_greedy_search(
+ #       no_runs: 
+#)
         
 
 
