@@ -518,9 +518,97 @@ def add_key_to_json_dict(fname:str, key:str, value:str)-> None:
     with open(fname,"w") as f:
         json.dump(d,f)
 
-#def do_new_greedy_search(
- #       no_runs: 
-#)
+def do_new_greedy_search(
+        all_nodes: List,
+        model: Any,
+        raw_circuit_idx: int,
+        doover: int,
+        no_runs: int,
+        no_iters: Bool=False,
+        no_samples: Bool=False,
+        save_to_file: Bool=False,
+        verbose: Bool=False, 
+)-> None:
+    '''
+    Performs greedy search to find G (a node) that maximises the difference between broken and cobled circuit: |metric(C\G)  - metric(M\G)|
+    Args:
+        all_nodes(List): A list of all nodes in a circuit.
+        model(Any): A model.
+        raw_circuit_idx(int): An integer of raw circuit index.
+        doover(int): A integer of do-over. 
+        no_runs(int): An integer of number of runs.
+        no_iters(int): A number of iterations.
+        no_samples (int): A number of samples.
+        save_to_file(Bool): A boolean of whether to save to file or not. Defaults to False.
+        verbose (Bool): A boolean of whether to be verbose or not. Defaults to False.
+    Returns:
+        None
+    '''
+    all_sets = [{"circuit_nodes":[], "removed_nodes":[]}] 
+    C_minus_G_init = deepcopy(all_nodes) # Obtains C - G 
+    C_minus_G = [head[0] for head in C_minus_G_init] # Gets a list of values of C - G
+
+    c = circuit_eval(model, [])
+    m = cobble_eval(model, [])
+    baseline = torch.abs(c - m)
+    
+    metadata = {
+        "no_runs": no_runs,
+        "no_iters": no_iters,
+        "no_samples": no_samples,
+    }
+
+    fname = (
+        f"jsons/greedy_search_results_{raw_circuit_idx}_{doover}_{ctime().json}"
+    )
+    print(fname)
+
+    # Write to JSON file
+    if save_to_file:
+        with open(
+            fname,
+            "w",
+        ) as outfile:
+            json.dump(metadata, outfile)
+    
+    for run in tqdm(range(no_runs)):
+        C-minus_G = deepcopy(C_minus_G_init)
+        G = []
+        old_diff = baseline.clone()
+
+        for iter in range(no_iters):
+            print("iter", iter)
+            to_test = random.sample(C_minus_G, min(no_samples, len(C_minus_G))) # Sample without replacement
+        
+            cevals = []
+            mevals = []
+
+            results = []
+            for (node) in (to_test):
+                # Check which heads in to_test causes the biggest drop
+                G_plus_node = deepcopy(G) + [node]
+
+                cevals.append(circuit_eval(model, G_plus_node).items())
+                mevals.append(cobble_eval(model, G_plus_node).items())
+                results.append(abs(cevals[-1] - mevals[-1]))
+
+            
+            best_node_idx = np.argmax(results) # Finds the index of the best node
+            max_diff = results[best_node_idx]
+            if max_diff > old_diff:
+                best_node = to_test[best_node_idx] # If max difference is greater than old difference, the best node will be one in to_test
+
+                all_sets.append(
+                    {
+                        "circuit_nodes": deepcopy(C_minus_G),
+                        "removed_nodes": deepcopy(G),
+                        "ceval": cevals[best_node_idx],
+                        "meval": mevals[best_node_idx],
+                    }
+                )
+
+                
+
         
 
 
