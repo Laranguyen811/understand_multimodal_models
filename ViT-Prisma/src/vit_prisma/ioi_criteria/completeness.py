@@ -606,7 +606,184 @@ def do_new_greedy_search(
                         "meval": mevals[best_node_idx],
                     }
                 )
+                
+                if verbose:
+                    print(
+                        f"iter: {iter} - best node: {best_node} - max brok cob diff: {max(results)} - baseline:{baseline}"
 
+                    )
+                    print_gpu_mem(f"iter {iter}")
+            
+            run_results = {
+                "result": old_diff,
+                "best set": all_sets[-1]["removed_nodes"],
+                "ceval": all_sets[-1]["ceval"],
+                "meval": all_sets[-1]["meval"],
+            }
+
+            if save_to_file:
+                add_key_to_json_dict(fname, f"run {run}", run_results) # Save file
+
+def do_random_search(NAIVE:Dict,CIRCUIT:Dict, skip_random: Bool=False, mode:str="naive")-> None:
+    '''
+    Perfoms random search. 
+    Args:
+        skip_random(Bool): A boolean of whether to skip random or not. Defaults to False.
+        mode(str): A string of mode. Defaults to "naive".
+    Returns:
+        None
+    '''
+    skip_random = True
+    if mode == "naive":
+        cicuit = deepcopy(NAIVE)
+    else:
+        cicuit = deepcopy(CIRCUIT)
+    all_nodes = get_all_nodes(cicuit)
+    
+    xs = []
+    ys = []
+
+    for _ in range(100):
+        if skip_random:
+            break # Breaks if skip_random
+        indicator = torch.randint(0, 2, (len(all_nodes),))
+        nodes = [node[0] for node, ind in zip(all_nodes, indicator) if ind == 1]
+        c = circuit_eval(mode, nodes)
+        m = cobble_eval(model, nodes)
+
+        print(f"{c}, {m} {torch.abs(c-m)}")
+
+        xs.append(c)
+        ys.append(m)
+
+    if not skip_random:
+        torch.save(xs, f"pts/{mode}_random_xs.pt")
+        torch.save(ys, f"pts/{mode}_random_ys.pt")
+    
+def process_plotting(mode:str="complete")-> None:
+    '''
+    Plots for greedy or naive. 
+    Args:
+        mode(str): A string of mode. Defaults to "complete".
+    Returns:
+        None
+    '''
+    fnames = os.listdir("jsons")
+    fnames = [fname for fname in fnames if "greedy_search_results" in fname]
+
+    xs = [[], []] 
+    ys = [[], []]
+    names = []
+
+    for circuit_idx in range(0,2):
+        for fname in fnames:
+            with open(f"jsons/{fname}", "r") as f:
+                data = json.load(f)
+            for idx in range(100):
+                key = f"run {idx}"
+                if key in data:
+                    if (
+                        f"results_{circuit_idx}" in fname and "ceval" in data[key]
+
+                    ):
+                        # Run our circuit, not naive
+                        xs[circuit_idx].append(data[key]["ceval"])
+                        ys[circuit_idx].append(data[key]["meval"])
+                        names.append(
+                            str(data[key]["best_set"]) + " " + str(data[key]["result"])
+                        )
+                    else:
+                        pass
+
+    fig = go.Figure()
+    # Add the grey region
+    # # Make the dotted line
+    minx = -2
+    maxx = 6
+    eps = 1.0
+    xs = np.linspace(minx -1, maxx + 1, 100) # Create xs by creating a linear space between minx -1 and maxx + 1 and spaced by 100
+    ys = ys 
+
+    fig.add_trace(
+        go.Scatter(
+            x = xs,
+            y = ys,
+            mode = "lines",
+            name = f"x=y",
+            line=dict(color="grey", width=2, dash="dash"),
+        )
+    )
+    perf_by_sets = torch.load(
+        f"pts/{mode}_perf_by_sets.pt"
+    ) # Sees the format of this file to overwrite plots
+
+    rd_set_added = False
+    for i, perf in enumerate(perf_by_sets):
+        fig.add_trace(
+            go.Scatter(
+               x=[perf["mean_cur_metric_broken"]],
+               y=[perf["mean_cur_metric_cobble"]],
+               mode="markers",
+               name=perf["removed_group"],
+               marker=dict(symbol="circle", size=10, color=perf["color"]),
+               showlegend = (
+                   ("1" in perf["removed_group"])
+               ),
+            )
+        )
+        
+    # Add the greedy search
+    greedy_xs = torch.load(f"pts/{mode}_xs.pt")
+    greedy_ys = torch.load(f"pts/{mode}_ys.pt")
+
+    fig.add_trace(
+        go.Scatter(
+            x=greedy_xs,
+            y=greedy_ys,
+            mode="markers",
+            name="Greedy",
+            marker=dict(symbol="square", size=6, color="blue"),
+        )
+    )
+
+    # Add the random
+    random_xs = torch.load(f"pts/{mode}_random_xs.pt")
+    random_ys = torch.load(f"pts/{mode}_random_ys.pt")
+
+    fig.add_trace(
+        go.Scatter(
+            x=random_xs,
+            y=random_ys,
+            mode="markers",
+            name="Random",
+            marker=dict(symbol="triangle-left", size=10, color="green"),
+        )
+    )
+
+    fig.update_xaxes(title_text="F(C \ K)")
+    fig.update_yaxes(title_text="F(M \ K)")
+    fig.update_xaxes(showgrid=True, gridcolor="black", gridwidth=1)
+    fig.update_yaxes(showgrid=True, gridcolor="black", gridwidth=1)
+    fig.update_layout(paper_bgcolor="white", plot_bgcolor="white")
+
+    # Use these lines to scale SVGs properly
+    fig.update_xaxes(range=[-1,6])
+    fig.update_yaxes(range=[-1,6])
+    fig.update_xaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
+    fig.update_yaxes(zeroline=True, zerolinewidth=2, zerolinecolor="black")
+
+    fig.update_yaxes(
+        scaleanchor="x",
+        scaleratio=1,
+    ) 
+
+    circuit_to_export = "natural"
+    fpath = f"circuit_completeness_{circuit_to_export}_CIRCUIT_at_{ctime()}.svg"
+    if os.path.exists("path/to/file"):
+        fpath = "svgs/" + fpath
+    
+    fig.write_image(fpath)
+    fig.show()
                 
 
         
