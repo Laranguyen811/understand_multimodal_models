@@ -11,7 +11,7 @@ from functools import lru_cache
 import transformers
 import json
 from transformers import AutoTokenizer
-from typing import Any, Optional, Tuple, Union, List, Bool
+from typing import Any, Optional, Tuple, Union, List
 from torch import Tensor
 from vit_prisma.prisma_tools.factored_matrix import FactoredMatrix
 CACHE_DIR = transformers.TRANSFORMERS_CACHE
@@ -178,7 +178,7 @@ def tokenise_and_concatenate(
         num_batches = num_tokens // length # Get the number of batches
         # Drop the final tokens if not enough to make a full sequence. Why?
         tokens = tokens[:length * num_batches]    
-        tokens = einops.rearrange(tokens, '(b l) -> b l', b = num_batches l=length) # Reshape into batches of length
+        tokens = einops.rearrange(tokens, '(b l) -> b l', b = num_batches, l=length) # Reshape into batches of length
         if add_bos_token:
             # Add BOS token at the start of each sequence
             prefix = np.full((num_batches, 1), tokeniser.bos_token_id) # Create a full array of prefix BOS tokens
@@ -405,7 +405,7 @@ def composition_scores(
 
 
 def verify_activations(model: Any,
-                       text:str) -> Bool:
+                       text:str) -> bool:
     '''
     Verifies activations in the attention matrix.
     Args:

@@ -644,7 +644,7 @@ def get_heads_from_nodes(nodes: Dict, dataset: Any)-> Dict:
 def calculate_logits_to_ave_logit_diff(
         logits: Tensor,
         ioi_test_case: Dict,
-        per_prompt: Bool = False,
+        per_prompt: bool = False,
     ) -> Float[Tensor, "batch"]:
     '''
     Returns the average logit difference between the correct and distractor prompts.

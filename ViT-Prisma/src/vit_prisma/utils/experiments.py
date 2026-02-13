@@ -430,8 +430,7 @@ class Ablation(Experiment):
         assert "AblationConfig" in str(type(ablation_config)) or "PatchingConfig" in str(type(ablation_config)), "Config must be of type AblationConfig or PatchingConfig"
         
         if semantic_indices is not None:
-            assert ablation_config.head_circuit not in ["hook_attn_scores", "hook_attn"],  # not implemented for attention scores or attn ablation.
-            "Semantic indices ablation not implemented for attention scores or attn."
+            assert ablation_config.head_circuit not in ["hook_attn_scores", "hook_attn"],"Semantic indices ablation not implemented for attention scores or attn."  # not implemented for attention scores or attn ablation
         assert not (means_by_groups and groups is None)
         self.semantic_indices = semantic_indices
         self.means_by_groups = means_by_groups

@@ -251,17 +251,17 @@ print(f"Text input IDs: {text_inputs.input_ids}")
 print(f"Image logits shape: {image_logits.shape}")
 print(f"Text logits shape: {text_logits.shape}")
 
-fig = go.Figure(data=[
-    go.Bar(name='Image Logits', x=first_captions, y=image_logits.cpu().numpy().flatten()),
-    go.Bar(name='Text Logits', x=first_captions, y=text_logits.cpu().numpy().flatten())
-])
-fig.update_layout(
-    barmode='group',
-    title='Image and Text Logits',
-    xaxis_title='Labels',
-    yaxis_title='Logits'
-)
-fig.show()
+#fig = go.Figure(data=[
+#    go.Bar(name='Image Logits', x=first_captions, y=image_logits.cpu().numpy().flatten()),
+#    go.Bar(name='Text Logits', x=first_captions, y=text_logits.cpu().numpy().flatten())
+#])
+#fig.update_layout(
+#    barmode='group',
+#    title='Image and Text Logits',
+#    xaxis_title='Labels',
+#    yaxis_title='Logits'
+#)
+#fig.show()
 
 # %%
 # Caching all activations
