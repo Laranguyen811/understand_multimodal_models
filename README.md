@@ -1,7 +1,7 @@
 
 # Cross-modal Analysis with Mechanistic Interpretability
 
-This repository explores cross-modal representations through the lens of mechanistic interpretability, with a focus on multimodal models. It is designed for iterative experimentation, diagnostic clarity, and reproducible workflows.
+This repository explores cross-modal representations through the lens of mechanistic interpretability, with a focus on multimodal models. It is designed for iterative experimentation, diagnostic clarity, and reproducible workflows. My cross-modal analysis is exploratory research with loosely formulated hypotheses and less strict testing. 
 
 ## 🔍 Project Overview
 
