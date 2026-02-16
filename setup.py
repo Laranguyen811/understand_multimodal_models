@@ -29,8 +29,7 @@ setup(
     long_description=open('docs/README.md').read(),
     long_description_content_type='text/markdown',
     url='https://github.com/soniajoseph/vit-prisma',
-    packages=find_packages(where='src'),
-    package_dir={'': 'src'},
+    packages=find_packages(),
     package_data={
     'vit_prisma': ['visualization/*.html', 'visualization/*.js'],
     # Add other patterns here as needed
