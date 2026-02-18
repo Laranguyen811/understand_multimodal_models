@@ -228,7 +228,7 @@ def define_set_K(circuit:Dict, circuits:Dict):
         assert head in new_j_entry, (head, new_j_entry)
         K[head] = list(set(new_j_entry))
 
-def run_experiment(circuit:Dict, circuits:Dict, K: Dict):
+def run_experiment(circuit:Dict, circuits:Dict, K: Dict, dataset: Any,mean_dataset: Any, model: Any, metric:function):
     '''
     Runs the experiment.
     Args:
@@ -239,6 +239,7 @@ def run_experiment(circuit:Dict, circuits:Dict, K: Dict):
     Returns:
         None
     '''
+    metric = calculate_logits_to_ave_logit_diff
     results = {}
     if "results_cache" not in dir():
         results_cache = {} # Massively speeds up future runs
@@ -247,7 +248,44 @@ def run_experiment(circuit:Dict, circuits:Dict, K: Dict):
         for head in circuits[1][circuit_class]:
             results[head] = [None, None]
             base = frozenset(K[head])
+            summit_list = deepcopy(K[head])
+            summit_list.remove(head)
+            summit = frozenset(summit_list)
 
+            for idx, ablated in enumerate([base, summit]):
+                if ablated not in results_cache:
+                    new_heads_to_keep = get_heads_circuit(
+                        dataset, excluded=ablated, circuit=circuit  
+                    )
+
+                    model.reset_hooks()
+                    model, _ = do_circuit_extraction(
+                        model=model, 
+                        heads_to_keep=new_heads_to_keep,
+                        mlps_to_remove={},
+                        dataset=dataset,
+                        mean_dataset=mean_dataset,
+                    )
+                    torch.cuda.empty_cache()
+                    metric_calc = metric(model, dataset, std=False)
+                    results_cache[ablated] - metric_calc
+                    print("Calculate metrics.")
+                results[head][idx] = results_cache[ablated]
+
+            print(f"{head} with {K[head]}: progress from {results[head][0]} to {results[head][1]}")
+
+def plot_figure(model:Any,circuit:Dict):
+    '''
+    Plots the figure of the metrics.
+    Args:
+        model(Any): A model.
+        circuit(Any): A dictionary of circuit.
+    Returns:  
+    
+    '''
+    ac = ALL_COLORS
+    cc= CLASS_COLORS.copy()
+    
 
 
 
