@@ -228,7 +228,7 @@ def define_set_K(circuit:Dict, circuits:Dict):
         assert head in new_j_entry, (head, new_j_entry)
         K[head] = list(set(new_j_entry))
 
-def run_experiment(circuit:Dict, circuits:Dict, K: Dict, dataset: Any,mean_dataset: Any, model: Any, metric:function):
+def run_experiment(circuit:Dict, circuits:Dict, K: Dict, dataset: Any,mean_dataset: Any, model: Any, metric:function)-> Dict:
     '''
     Runs the experiment.
     Args:
@@ -273,8 +273,9 @@ def run_experiment(circuit:Dict, circuits:Dict, K: Dict, dataset: Any,mean_datas
                 results[head][idx] = results_cache[ablated]
 
             print(f"{head} with {K[head]}: progress from {results[head][0]} to {results[head][1]}")
-
-def plot_figure(model:Any,circuit:Dict):
+            return results
+        
+def plot_figure(model:Any,circuit:Dict, head_positions:List[set], results: Dict):
     '''
     Plots the figure of the metrics.
     Args:
@@ -285,6 +286,74 @@ def plot_figure(model:Any,circuit:Dict):
     '''
     ac = ALL_COLORS
     cc= CLASS_COLORS.copy()
+
+    relevant_classes = list(circuit.keys())
+    fig = go.Figure()
+    
+    initial_y_cache = {}
+    final_y_cache = {}
+
+    the_xs = {}
+
+    for j, G in enumerate(relevant_classes + ["compositional linker"]):
+        # Loops throught the relevant classes and the head that focuses the position of the query to the position of the correct object, allowing for compositional link in the image domain 
+        xs = []
+        initial_ys = []
+        final_ys = []
+        colors = []
+        names = []
+        widths = []
+
+        if G == "compositional linker":
+            curvys = list(circuit["linker"]) # Creates a dictionary curvyes to store linker circuit activations
+            for head in head_positions:
+                curvys.remove(head)
+        
+        elif G == "linker":
+            curvys = head_positions
+        else:
+            curvys=list(circuit[G])
+        
+        curvys = sorted(curvys, key=lambda x: -abs(results)[x][1] - results[x][0])
+
+        for v in curvys:
+            colors.append(cc[G])
+            xs.append(str(v))
+            initial_y = results[v][0]
+            final_y = results[v][1]
+
+            initial_ys.append(initial_y)
+            final_ys.append(final_y)
+
+        the_xs[G] = xs
+        initial_ys = torch.Tensor(initial_ys)
+        final_ys = torch.Tensor(final_ys)
+        initial_y_cache[G] = initial_ys
+        final_y_cache[G] = final_ys
+
+        y = final_ys - initial_ys
+
+        if True:
+            base = [0.0 for _ in range(len(xs))]
+            warnings.warn("Base is 0.")
+            y = abs(y)
+        else:
+            base = initial_ys
+
+        fig.add_trace(
+            go.Bar(
+                x=xs,
+                y=y,
+                base=base,
+                marker_color=colors,
+                width=[1.0 for _ in range(len(xs))],
+                name=G,
+            )
+        ) 
+
+
+
+
     
 
 
