@@ -1,7 +1,7 @@
 
-# Cross-modal Analysis with Mechanistic Interpretability
+# Understanding Multimodal Models
 
-This repository explores cross-modal representations through the lens of mechanistic interpretability, with a focus on multimodal models. It is designed for iterative experimentation, diagnostic clarity, and reproducible workflows. My cross-modal analysis is exploratory research with loosely formulated hypotheses, less strict testing and fewer details about experimental design. 
+This repository helps our community better understand multimodal models, including exploring cross-modal representations through the lens of mechanistic interpretability. It is designed for iterative experimentation, diagnostic clarity, and reproducible workflows. My cross-modal analysis is exploratory research with loosely formulated hypotheses, less strict testing and fewer details about experimental design. 
 
 ## 🔍 Project Overview
 
@@ -47,7 +47,7 @@ This repository uses `dev` as the **default branch** to reflect its active, rese
 This project is in active development. Contributions are welcome, especially around:
 - Mechanistic interpretability techniques
 - Cross-modal benchmarking datasets
-- Visualization tools for internal model states
+- Visualisation tools for internal model states
 
 Please open an issue or pull request with your ideas.
 
