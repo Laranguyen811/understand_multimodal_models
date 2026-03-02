@@ -398,11 +398,10 @@ def _get_general_hf_config(model_name: str, model_type=None):
 def _get_timm_hf_config(model_name: str):
     """Get HuggingFace config from TIMM model."""
     import timm
-
+    from timm.models import get_pretrained_cfg
     model = timm.create_model(model_name)
-    from transformers import AutoConfig
 
-    hf_config = AutoConfig.from_pretrained(model.default_cfg["hf_hub_id"])
+    hf_config = get_pretrained_cfg(model_name)
     return hf_config
 
 
