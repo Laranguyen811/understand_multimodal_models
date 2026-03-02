@@ -351,6 +351,20 @@ def plot_figure(model:Any,circuit:Dict, head_positions:List[set], results: Dict)
             )
         ) 
 
+    fig.update_layout(
+        xaxis_title = "Attention head",
+        yaxis_title = "Change in logit difference",
+    )
+
+    fig.update_xaxes(
+        gridcolor = "black",
+        gridwidth=0.1,
+
+    )
+    fig.update_layout(legend=dict(yanchor="top",y=0.90,xanchor="left",x=0.01))
+    fig.update_yaxes(gridcolor="black",gridwidth=0.1)
+    
+
 
 
 

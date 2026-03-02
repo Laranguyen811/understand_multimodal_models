@@ -488,11 +488,11 @@ def _create_config_from_hf(hf_config, model_name: str, model_type: ModelType):
         config = HookedViTConfig()
 
         # Core architecture parameters
-        config.d_model = hf_config.hidden_size
-        config.n_layers = hf_config.num_hidden_layers
-        config.n_heads = hf_config.num_attention_heads
-        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads
-        config.d_mlp = hf_config.intermediate_size
+        config.d_model = hf_config.hidden_size if hasattr(hf_config,"hidden_size") else None
+        config.n_layers = hf_config.num_hidden_layers if hasattr(hf_config,"num_hidden_layers") else None
+        config.n_heads = hf_config.num_attention_heads if hasattr(hf_config,"num_attention_heads") else None
+        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads if hasattr(hf_config, "hidden_size") else None
+        config.d_mlp = hf_config.intermediate_size if hasattr(hf_config,"intermediate_size") else None
 
         # Vision-specific parameters
         config.image_size = getattr(hf_config, "image_size", 224)
@@ -508,12 +508,12 @@ def _create_config_from_hf(hf_config, model_name: str, model_type: ModelType):
 
     elif model_type == ModelType.TEXT:  # TEXT
         config = HookedTextTransformerConfig()
-        config.d_model = hf_config.hidden_size
-        config.n_layers = hf_config.num_hidden_layers
-        config.n_heads = hf_config.num_attention_heads
-        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads
-        config.d_mlp = hf_config.intermediate_size
-        config.vocab_size = hf_config.vocab_size
+        config.d_model = hf_config.hidden_size if hasattr(hf_config,"hidden_size") else None
+        config.n_layers = hf_config.num_hidden_layers if hasattr(hf_config,"num_hidden_layers") else None
+        config.n_heads = hf_config.num_attention_heads if hasattr(hf_config,"num_attention_heads") else None
+        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads if hasattr(hf_config, "hidden_size") else None
+        config.d_mlp = hf_config.intermediate_size if hasattr(hf_config,"intermediate_size") else None
+        config.vocab_size = hf_config.vocab_size if hasattr(hf_config,"vocab_size") else None
         config.context_length = getattr(hf_config, "max_position_embeddings", 77)
 
     # Common parameters

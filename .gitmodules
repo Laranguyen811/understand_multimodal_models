@@ -1,0 +1,3 @@
+[submodule "experimental_design"]
+  path = experimental_design
+  url = https://github.com/usnistgov/experimental_design.git
