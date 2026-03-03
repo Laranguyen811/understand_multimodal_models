@@ -1149,4 +1149,3 @@ plot_embeddings(
 # %%
 print("Number of attention heads in the model:", clip_model.cfg.n_heads)
 
-
