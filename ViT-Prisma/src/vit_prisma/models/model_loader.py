@@ -183,7 +183,8 @@ def load_config(
     if model_name not in MODEL_CATEGORIES:
         raise ValueError(f"Model '{model_name}' is not registered in configurations")
 
-    if model_type == ModelType.TEXT and model_name not in TEXT_SUPPORTED_MODELS:
+    if (model_type == ModelType.TEXT 
+    and model_name not in TEXT_SUPPORTED_MODELS):
         raise ValueError(f"Model '{model_name}' does not support text modality")
 
     category = MODEL_CATEGORIES[model_name]
@@ -215,7 +216,8 @@ def load_config(
     return new_config
 
 
-def check_model_name(model_name: str, allow_failing: bool = False) -> str:
+def check_model_name(model_name: str, 
+                     allow_failing: bool = False) -> str:
     """
     Check if a model name is valid and supported.
 
@@ -332,7 +334,8 @@ def load_hooked_model(
         dtype = kwargs["torch_dtype"]
 
     if (
-        (kwargs.get("torch_dtype", None) == torch.float16) or dtype == torch.float16
+        (kwargs.get("torch_dtype", None) == torch.float16) 
+        or dtype == torch.float16
     ) and device in ["cpu", None]:
         logging.warning(
             "float16 models may not work on CPU. Consider using a GPU or bfloat16."
@@ -404,7 +407,9 @@ def _get_timm_hf_config(model_name: str):
     return hf_config
 
 
-def _get_open_clip_config(model_name: str, model_type: ModelType, local_path=None):
+def _get_open_clip_config(model_name: str, 
+                          model_type: ModelType, 
+                          local_path=None):
     import json
     import os
 
@@ -437,7 +442,9 @@ def _get_open_clip_config(model_name: str, model_type: ModelType, local_path=Non
     return model_config
 
 
-def _create_config_from_open_clip(model_cfg, model_name, model_type: ModelType):
+def _create_config_from_open_clip(model_cfg, 
+                                  model_name, 
+                                  model_type: ModelType):
 
     cfg = HookedViTConfig()
     cfg.d_model = model_cfg["vision_cfg"]["width"]
@@ -480,17 +487,21 @@ def _create_config_from_open_clip(model_cfg, model_name, model_type: ModelType):
     return cfg
 
 
-def _create_config_from_hf(hf_config, model_name: str, model_type: ModelType):
+def _create_config_from_hf(hf_config, 
+                           model_name: str, 
+                           model_type: ModelType):
     """Create a general config from HuggingFace config for any vision or text transformer."""
     if model_type == ModelType.VISION or model_type == None:  # VISION
         config = HookedViTConfig()
 
         # Core architecture parameters
-        config.d_model = hf_config.hidden_size if hasattr(hf_config,"hidden_size") else None
-        config.n_layers = hf_config.num_hidden_layers if hasattr(hf_config,"num_hidden_layers") else None
-        config.n_heads = hf_config.num_attention_heads if hasattr(hf_config,"num_attention_heads") else None
-        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads if hasattr(hf_config, "hidden_size") else None
-        config.d_mlp = hf_config.intermediate_size if hasattr(hf_config,"intermediate_size") else None
+        config.input_size = getattr(hf_config, "input_size", 224)
+        config.output_size = getattr(hf_config, "output_size", 768)
+        config.d_model = hf_config.d_model if hasattr(hf_config, "d_model") else 768
+        config.n_layers = hf_config.num_hidden_layers if hasattr(hf_config, "num_hidden_layers") else 1 
+        config.n_heads = hf_config.n_heads if hasattr(hf_config, "n_heads") else config.d_model // 64  # Default to 64-dim heads if not specified
+        config.d_head = hf_config.d_model // hf_config.n_heads if hasattr(hf_config, "n_heads") else 64  # Default to 4x MLP expansion if not specified
+        config.d_mlp = hf_config.intermediate_size if hasattr(hf_config, "intermediate_size") else (config.input_size + config.output_size)/2  # Default to the mean of input and output size if not specified
 
         # Vision-specific parameters
         config.image_size = getattr(hf_config, "image_size", 224)
@@ -506,12 +517,12 @@ def _create_config_from_hf(hf_config, model_name: str, model_type: ModelType):
 
     elif model_type == ModelType.TEXT:  # TEXT
         config = HookedTextTransformerConfig()
-        config.d_model = hf_config.hidden_size if hasattr(hf_config,"hidden_size") else None
-        config.n_layers = hf_config.num_hidden_layers if hasattr(hf_config,"num_hidden_layers") else None
-        config.n_heads = hf_config.num_attention_heads if hasattr(hf_config,"num_attention_heads") else None
-        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads if hasattr(hf_config, "hidden_size") else None
-        config.d_mlp = hf_config.intermediate_size if hasattr(hf_config,"intermediate_size") else None
-        config.vocab_size = hf_config.vocab_size if hasattr(hf_config,"vocab_size") else None
+        config.d_model = hf_config.hidden_size
+        config.n_layers = hf_config.num_hidden_layers
+        config.n_heads = hf_config.num_attention_heads 
+        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads
+        config.d_mlp = hf_config.intermediate_size
+        config.vocab_size = hf_config.vocab_size
         config.context_length = getattr(hf_config, "max_position_embeddings", 77)
 
     # Common parameters
