@@ -447,11 +447,11 @@ def _create_config_from_open_clip(model_cfg,
                                   model_type: ModelType):
 
     cfg = HookedViTConfig()
-    cfg.d_model = model_cfg["vision_cfg"]["width"]
-    cfg.n_layers = model_cfg["vision_cfg"]["layers"]
-    cfg.patch_size = model_cfg["vision_cfg"]["patch_size"]
-    cfg.image_size = model_cfg["vision_cfg"]["image_size"]
-    cfg.n_classes = model_cfg["embed_dim"]
+    cfg.d_model = model_cfg["vision_cfg"]["width"] if hasattr(model_cfg["vision_cfg"], "width") else 768
+    cfg.n_layers = model_cfg["vision_cfg"]["layers"] if hasattr(model_cfg["vision_cfg"], "layers") else 1
+    cfg.patch_size = model_cfg["vision_cfg"]["patch_size"] if hasattr(model_cfg["vision_cfg"], "patch_size") else 16
+    cfg.image_size = model_cfg["vision_cfg"]["image_size"] if hasattr(model_cfg["vision_cfg"], "image_size") else 224
+    cfg.n_classes = model_cfg["embed_dim"] if hasattr(model_cfg, "embed_dim") else cfg.d_model
     # cfg.n_heads = model_cfg['vision_cfg']['num_attention_heads']
 
     cfg.model_name = model_name
@@ -517,12 +517,14 @@ def _create_config_from_hf(hf_config,
 
     elif model_type == ModelType.TEXT:  # TEXT
         config = HookedTextTransformerConfig()
-        config.d_model = hf_config.hidden_size
-        config.n_layers = hf_config.num_hidden_layers
-        config.n_heads = hf_config.num_attention_heads 
-        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads
-        config.d_mlp = hf_config.intermediate_size
-        config.vocab_size = hf_config.vocab_size
+        config.input_size = getattr(hf_config, "input_size", 512)
+        config.output_size = getattr(hf_config, "output_size", 768)
+        config.d_model = hf_config.hidden_size if hasattr(hf_config, "hidden_size",) else 768
+        config.n_layers = hf_config.num_hidden_layers if hasattr(hf_config, "num_hidden_layers") else 1
+        config.n_heads = hf_config.num_attention_heads if hasattr(hf_config, "num_attention_heads") else config.d_model // 64  # Default to 64-dim heads if not specified
+        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads if hasattr(hf_config, "hidden_size") and hasattr(hf_config, "num_attention_heads") else 64  # Default to 64-dim heads if not specified
+        config.d_mlp = hf_config.intermediate_size if hasattr(hf_config, "intermediate_size") else (config.input_size + config.output_size)/2  # Default to the mean of input and output size if not specified
+        config.vocab_size = hf_config.vocab_size if hasattr(hf_config, "vocab_size") else 30522  # Default to BERT vocab size if not specified
         config.context_length = getattr(hf_config, "max_position_embeddings", 77)
 
     # Common parameters
