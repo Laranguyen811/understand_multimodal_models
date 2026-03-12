@@ -19,48 +19,51 @@ class MLP(nn.Module):
         
         if not isinstance(cfg, (HookedViTConfig, HookedTextTransformerConfig)):
             cfg = HookedViTConfig.from_dict(cfg)
-        
-        self.cfg = cfg
+        try:
+            self.cfg = cfg
 
-        self.W_in = nn.Parameter(
-            torch.empty(self.cfg.d_model, self.cfg.d_mlp, dtype=self.cfg.dtype)
-        )
-        self.b_in = nn.Parameter(
-            torch.empty(self.cfg.d_mlp, dtype=self.cfg.dtype)
-        )
-        self.W_out = nn.Parameter(
-            torch.empty(self.cfg.d_mlp, self.cfg.d_model, dtype=self.cfg.dtype)
-        )
-        self.b_out = nn.Parameter(
-            torch.empty(self.cfg.d_model, dtype=self.cfg.dtype)
-        )
+            self.W_in = nn.Parameter(
+                torch.empty(int(self.cfg.d_model), int(self.cfg.d_mlp), dtype=self.cfg.dtype)
+            )
+            self.b_in = nn.Parameter(
+                torch.empty(int(self.cfg.d_mlp), dtype=self.cfg.dtype)
+            )
+            self.W_out = nn.Parameter(
+                torch.empty(int(self.cfg.d_mlp), int(self.cfg.d_model), dtype=self.cfg.dtype)
+            )
+            self.b_out = nn.Parameter(
+                torch.empty(int(self.cfg.d_model), dtype=self.cfg.dtype)
+            )
 
-        self.hook_pre = HookPoint()
-        self.hook_post = HookPoint()
+            self.hook_pre = HookPoint()
+            self.hook_post = HookPoint()
 
-        if self.cfg.activation_name == "relu":
-                self.act_fn = F.relu
-        elif self.cfg.activation_name == "gelu":
-            self.act_fn = F.gelu
-        elif self.cfg.activation_name == "silu":
-            self.act_fn = F.silu
-        elif self.cfg.activation_name == "gelu_new":
-            self.act_fn = gelu_new
-        elif self.cfg.activation_name == "gelu_fast":
-            self.act_fn = gelu_fast
-        elif self.cfg.activation_name == "quick_gelu":
-            self.act_fn = quick_gelu
-        elif self.cfg.activation_name == "solu_ln": # why does only solu have a layernorm? 
-            self.act_fn = solu
-            # Hook taken between activation and layer norm
-            self.hook_mid = HookPoint()  # [batch, pos, d_mlp]
-            if self.cfg.normalization_type == "LN":
-                self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
+            if self.cfg.activation_name == "relu":
+                    self.act_fn = F.relu
+            elif self.cfg.activation_name == "gelu":
+                self.act_fn = F.gelu
+            elif self.cfg.activation_name == "silu":
+                self.act_fn = F.silu
+            elif self.cfg.activation_name == "gelu_new":
+                self.act_fn = gelu_new
+            elif self.cfg.activation_name == "gelu_fast":
+                self.act_fn = gelu_fast
+            elif self.cfg.activation_name == "quick_gelu":
+                self.act_fn = quick_gelu
+            elif self.cfg.activation_name == "solu_ln": # why does only solu have a layernorm? 
+                self.act_fn = solu
+                # Hook taken between activation and layer norm
+                self.hook_mid = HookPoint()  # [batch, pos, d_mlp]
+                if self.cfg.normalization_type == "LN":
+                    self.ln = LayerNorm(self.cfg, self.cfg.d_mlp)
+                else:
+                    self.ln = LayerNormPre(self.cfg)
+
             else:
-                self.ln = LayerNormPre(self.cfg)
-
-        else:
-            raise ValueError(f"Invalid activation function name: {self.cfg.activation_name}")
+                raise ValueError(f"Invalid activation function name: {self.cfg.activation_name}")
+        except Exception as e:
+            print(f"Error initializing MLP: {e}")
+            raise e
     
     def forward(self, x: Float[torch.Tensor, "batch pos d_model"]
     ) -> Float[torch.Tensor, "batch pos d_model"]:

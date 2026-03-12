@@ -6,7 +6,6 @@ from tqdm import tqdm
 
 # @TODO DEBUG what the hell is going on with prsima updates not loading in apptainer
 
-
 def iterate_through_dataset(trainer):
     start = time.time()
     n_training_tokens = 0
@@ -19,20 +18,23 @@ def iterate_through_dataset(trainer):
     return end - start
 
 
+try: 
+    cfg = VisionModelSAERunnerConfig.load_config("conf_test.json")
+    cfg.use_cached_activations = True
 
-cfg = VisionModelSAERunnerConfig.load_config("conf_test.json")
-cfg.use_cached_activations = True
+    trainer = VisionSAETrainer(cfg)
 
-trainer = VisionSAETrainer(cfg)
+    precomputed_time = iterate_through_dataset(trainer)
 
-precomputed_time = iterate_through_dataset(trainer)
-
-cfg.use_cached_activations = False
-trainer.activations_store = trainer.initialize_activations_store(
-    trainer.dataset, trainer.eval_dataset
-)
-on_demand_calc_time = iterate_through_dataset(trainer)
+    cfg.use_cached_activations = False
+    trainer.activations_store = trainer.initialize_activations_store(
+        trainer.dataset, trainer.eval_dataset
+    )
+    on_demand_calc_time = iterate_through_dataset(trainer)
 
 
-print(f"On Demand took {on_demand_calc_time:.2f} seconds for {cfg.num_epochs}")
-print(f"Precomputed took {precomputed_time:.2f} seconds for {cfg.num_epochs}")
+    print(f"On Demand took {on_demand_calc_time:.2f} seconds for {cfg.num_epochs}")
+    print(f"Precomputed took {precomputed_time:.2f} seconds for {cfg.num_epochs}")
+
+except Exception as e:
+    print(FileNotFoundError("File not found. Make sure conf_test.json exists and is in the correct path."))
