@@ -13,6 +13,7 @@ from vit_prisma.utils.ioi_utils import show_pp
 import graphviz 
 from vit_prisma.utils import detect_architectures
 from torch import Tensor
+from vit_prisma.utils.patching_utils import direct_path_patching
 
 def get_hook_tuple(model:Any,
                    layer: int,
@@ -232,11 +233,7 @@ def old_path_patching(
             model.add_hook(hook_name, hook)
         return model
     
-#def direct_path_patching(
-#        model: Any,
-#        orig_data: Tensor,
-#        new_data: Tensor,
-#)
+
 
 
 

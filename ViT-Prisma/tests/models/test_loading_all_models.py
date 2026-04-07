@@ -6,7 +6,7 @@ import open_clip
 
 from vit_prisma.models.model_loader import load_hooked_model
 from vit_prisma.models.base_vit import HookedViT
-
+import timeout_decorator
 
 # Define a list of models to test
 MODEL_LIST = [
@@ -104,6 +104,8 @@ def pytest_configure(config):
     )
 
 # Modify your test function
+@timeout_decorator.timeout(60)  # Set a timeout of 60 seconds for each test
+@pytest.mark.slow # Mark the test as slow to allow selective running
 @pytest.mark.divergence_info
 @pytest.mark.parametrize("model_name", MODEL_LIST)
 def test_loading_clip(model_name):

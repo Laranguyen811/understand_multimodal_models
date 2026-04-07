@@ -6,7 +6,6 @@ import open_clip
 
 from vit_prisma.models.model_loader import load_hooked_model
 
-
 # Define a list of models to test
 MODEL_LIST = [
     # MChecking
@@ -85,7 +84,6 @@ MODEL_LIST = [
 
 TOLERANCE = 1e-4
 DEVICE = "cuda"
-
 
 @pytest.mark.parametrize("model_name", MODEL_LIST)
 def test_loading_clip(model_name):
