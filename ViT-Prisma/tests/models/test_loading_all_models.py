@@ -104,7 +104,7 @@ def pytest_configure(config):
     )
 
 # Modify your test function
-@timeout_decorator.timeout(60)  # Set a timeout of 60 seconds for each test
+@timeout_decorator.timeout(60)  # Set a timeout of 60 seconds for each test. Only use timeouts as a last resort to prevent infinite loops or excessively long tests.
 @pytest.mark.slow # Mark the test as slow to allow selective running
 @pytest.mark.divergence_info
 @pytest.mark.parametrize("model_name", MODEL_LIST)

@@ -8,6 +8,7 @@ from transformers import ViTModel
 
 
 from transformers import CLIPVisionModelWithProjection
+import timeout_decorator
 
 # def test_loading_kandinsky():
 #     TOLERANCE = 1e-4
@@ -47,7 +48,8 @@ from transformers import CLIPVisionModelWithProjection
 # if __name__ == "__main__":
 #     test_loading_kandinsky()
 
-
+@timeout_decorator.timeout(60)  # 1 minute timeout for each model. Only use timeouts as a last resort to prevent infinite loops, not as a way to speed up tests
+@pytest.mark.slow # Mark this test as slow since it loads many models and runs inference
 @pytest.mark.skip(reason="Reliant on files not in repo")
 def test_loading_kandinsky():
     TOLERANCE = 1e-4

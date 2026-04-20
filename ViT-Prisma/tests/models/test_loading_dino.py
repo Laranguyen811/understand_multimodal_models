@@ -8,8 +8,11 @@ from tqdm import tqdm
 from vit_prisma.dataloaders.imagenet_dataset import load_imagenet
 from vit_prisma.models.base_vit import HookedViT
 from transformers import ViTModel
+import timeout_decorator
 
 @pytest.mark.skip(reason="Requires pretrained weights")
+@timeout_decorator.timeout(60)  # 1 minute timeout. Only use timeouts as a last resort to prevent hanging tests, and make sure to set a reasonable timeout duration.
+@pytest.mark.slow # Mark this test as slow since it loads the model and runs inference
 def test_loading_dino():
     TOLERANCE = 1e-4
 

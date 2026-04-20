@@ -5,6 +5,7 @@ from vit_prisma.models.base_vit import HookedViT
 import open_clip
 
 from vit_prisma.models.model_loader import load_hooked_model
+import timeout_decorator
 
 # Define a list of models to test
 MODEL_LIST = [
@@ -85,6 +86,8 @@ MODEL_LIST = [
 TOLERANCE = 1e-4
 DEVICE = "cuda"
 
+@timeout_decorator.timeout(60)  # 1 minute timeout for each model. Only use timeouts as a last resort to prevent infinite hangs, not as a primary way to manage test runtime.
+@pytest.mark.slow # Mark this test as slow since it loads many models and runs inference
 @pytest.mark.parametrize("model_name", MODEL_LIST)
 def test_loading_clip(model_name):
     """Test that the outputs of the HookedViT model match the original model."""

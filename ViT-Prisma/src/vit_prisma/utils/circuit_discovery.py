@@ -13,7 +13,7 @@ from vit_prisma.utils.ioi_utils import show_pp
 import graphviz 
 from vit_prisma.utils import detect_architectures
 from torch import Tensor
-from vit_prisma.utils.patching_utils import direct_path_patching
+from vit_prisma.utils.patching_utils import direct_path_patching, direct_path_patching_up_to
 
 def get_hook_tuple(model:Any,
                    layer: int,
@@ -233,11 +233,199 @@ def old_path_patching(
             model.add_hook(hook_name, hook)
         return model
     
+class Node:
+    def __init__(self,
+                layer:int,
+                head: int,
+                position: str):
+        self.layer = layer
+        self.head = head
+        assert isinstance(position, str), f"Position must be a string, not{type(position)}."
+        self.position = position
+        self.children = []
+        self.parents = []
 
+    def __repr__(self):
+        '''
+        String representation of the Node object.
+        '''
+        return f"Node(layer={self.layer}, head={self.head}, position={self.position})"
 
+    def repr_long(self):
+        '''
+        Long string representation of the Node object, including its children and parents.
+        '''
+        return f"Node(layer={self.layer}, head={self.head}, position={self.position} with children={[child.__repr__() for child in self.children]}, parents={[parent.__repr__() for parent in self.parents]})"
 
+    def display(self):
+        '''
+        Display the node and its children in a readable format.
+        '''
+        if self.layer == 12:
+            return "resid out"
 
+        elif self.head is not None:
+            return f"mlp{self.layer}\n{self.position}"
         
+        else:
+            return f"{self.layer}.{self.head}\n{self.position}"
+
+class HypothesisTree:
+    def __init__(
+            self,
+            model: Any,
+            metric: Callable,
+            orig_data: Tensor,
+            new_data: Tensor,
+            threshold: float,
+            orig_positions: OrderedDict,
+            new_positions: OrderedDict,
+            dataset: Any=None,
+            use_caching: bool=False,
+            direct_paths_only: bool=False,
+    ):
+        model.reset_hooks()
+        self.model = model
+        self.orig_positions = orig_positions
+        self.new_positions = new_positions
+        assert list(orig_positions.keys()) == list(new_positions.keys()), "Number and order of keys should be the same for now."
+        self.node_stack = OrderedDict()
+        self.populate_node_stack()
+        self.current_node = self.node_stack[
+            next(reversed(self.node_stack))
+        ] # last element
+        self.root_node = self.current_node
+        self.metric = metric
+        self.dataset = dataset
+        self.orig_data = orig_data
+        self.new_data = new_data
+        self.threshold = threshold
+        self.default_metric = self.metric(model,dataset)
+        self.orig_cache = None
+        self.new_cache = None
+        self.use_caching = True
+        if use_caching:
+            self.get_caches()
+        self.important_nodes = []
+        self.direct_paths_only = direct_paths_only
+
+    def populate_node_stack(self):
+        '''
+        Populate the node stack with all possible nodes based on the original and new positions.
+        '''
+        for layer in range(self.model.cfg.n_layers):
+            for head in list(range(self.model.cfg.n_heads)) + [None]:
+                # Includes None for MLP
+                for pos in self.orig_positions:
+                    node = Node(layer, head, pos)
+                    self.node_stack[(layer, head, pos)] = node
+            layer = self.model.cfg.n_layers
+            pos = next(reversed(self.orig_positions)) # Assume the last position specified is the one that we care about in the residual stream
+            resid_post = Node(layer, None, pos)
+
+    def get_caches(self):
+        '''
+        Get the caches for the original and new data.
+        '''
+        if "orgin_cache" in self.__dict__.keys():
+            warnings.warn("Overwriting existing origin cache.")
+        
+        # Save activations from original data
+        self.orig_cache = {}
+        self.model.reset_hooks()
+        self.model.cache_all (self.orig_cache)
+        _ = self.model(self.orig_data, prepend_bos=False)
+    
+    def eval(
+            self,
+            threshold: Union[float, None] = None,
+            verbose: bool = False,
+            show_graphics: bool = False,
+            auto_threshold: float = 0.0,
+
+    )-> None:
+        '''
+        Evaluate the hypothesis tree by performing path patching and checking the metric against the threshold.
+        Args:
+            threshold (Union[float, None], optional): The threshold for determining whether a node is important. If None, uses the default threshold. Defaults to None.
+            verbose (bool, optional): Whether to print verbose output during evaluation. Defaults to False.
+            show_graphics (bool, optional): Whether to show graphics of the hypothesis tree during evaluation. Defaults to False.
+            auto_threshold (float, optional): The automatic threshold for determining whether a node is important based on the metric change. Defaults to 0.0.
+        Returns:
+            None
+        '''
+        if self.direct_paths_only:
+            print("1")
+            self.eval_new(
+                threshold=threshold,
+                verbose=verbose,
+                show_graphics=show_graphics,
+                auto_threshold=auto_threshold,
+            )
+        
+        else:
+            print("2")
+            self.eval_old(
+                threshold=threshold,
+                verbose=verbose,
+                show_graphics=show_graphics,
+                auto_threshold=auto_threshold,
+            )
+        
+    def eval_new(
+                self,
+                threshold: Union[float, None] = None,
+                verbose: bool = False,
+                show_graphics: bool = False,
+                auto_threshold: float = 0.0,
+        )-> None:
+        '''
+        Evaluate the hypothesis tree using the direct path patching method.
+        '''
+        if threshold is None:
+            threshold = self.threshold
+        _, node = self.node_stack.popitem() # Remove the item last inserted into the node stack
+            
+        self.important_nodes.append(node)
+        print(f"Currently evaluating node {node}")
+
+        current_node_position = node.position
+        for pos in self.orig_positions:
+            if (
+                current_node_position != pos and node.head is None
+            ):
+                # MLPs and the end state of the residual stream only care about the last position
+                continue
+        
+        receiver_hooks = []
+        if node.layer == self.model.cfg.n_layers:
+            receiver_hooks.append((f"blocks.{node.layer-1}.hook_resid_post", None))
+        elif node.head is None:
+            receiver_hooks.append((f"blocks.{node.layer}.hook_resid_mid", None))
+        else:
+            receiver_hooks.append((f"blocks.{node.layer}.attn.hook_v_output", node.head))
+            receiver_hooks.append((f"blocks.{node.layer}.attn.hook_k_input",node.head))
+            if pos == current_node_position:
+                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_q_input", node.head)) # Only the last position that we care about, similarly
+
+        for receiver_hook in receiver_hooks:
+            print(f"Working on pos {pos}, receiver hook {receiver_hook}")
+
+            attn_results, mlp_results = direct_path_patching_up_to(
+                model=self.model,
+                receiver_hook=receiver_hook,
+                important_nodes=self.important_nodes,
+                metric=self.metric,
+                dataset=self.dataset,
+                orig_data=self.orig_data,
+                new_data=self.new_data,
+                orig_positions=self.orig_positions,
+                new_positions=self.new_positions,
+                cur_position=pos,
+                orig_cache=self.orig_cache,
+                new_cache=self.new_cache,
+            )
+                
         
 
         
