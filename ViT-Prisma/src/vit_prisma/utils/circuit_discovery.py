@@ -425,7 +425,38 @@ class HypothesisTree:
                 orig_cache=self.orig_cache,
                 new_cache=self.new_cache,
             )
-                
+
+            self.attn_results = attn_results.clone() # Clone attn_results to avoid modifying actual attn_results 
+            self.mlp_results = mlp_results.clone() # Clone attn_results to avoid modifying actual mlp_results
+
+            # Convert to percentage
+            attn_results -= self.default_metric # Subtract default_metric from attn_results
+            self.mlp_results /= self.default_metric # Divide mlp_results by default_metric
+            mlp_results -= self.default_metric # Subtract default_metric from mlp_results
+            mlp_results /= self.default_metric # Divide mlp_results by default_metric
+
+            if show_graphics:
+                show_pp(
+                    attn_results,
+                    title=f"{node} {receiver_hook} {pos}",
+                    xlabel="Head",
+                    ylabel="Layer",
+                )
+                show_pp(
+                    mlp_results,
+                    title=f"MLP results for {node} with receiver hook {receiver_hook} position {pos}",
+                    xlabel="Layer",
+                    ylabel="",
+                )
+
+                if auto_threshold:
+                    threshold = max(
+                        auto_threshold * attn_results.std(),
+                        auto_threshold * mlp_results.std(),
+                        0.01,
+                    )
+
+            
         
 
         
