@@ -1,7 +1,7 @@
 from PIL import Image
 import requests
 from vit_prisma.vjepa_hf.modeling_vjepa import VJEPAModel, VJEPAImageProcessor
-from vit_prisma.vjepa_hf.configs import CONFIGS
+from vit_prisma.vjepa_hf.configs.configs import CONFIGS
 import yaml
 
 import torch

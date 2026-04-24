@@ -204,6 +204,8 @@ def load_config(
     elif category in [ModelCategory.CLIP, ModelCategory.VIVIT]:
         old_config = _get_general_hf_config(model_name, model_type)
         new_config = _create_config_from_hf(old_config, model_name, model_type)
+    else:
+        raise ValueError(f"Unsupported model category: {category} for model '{model_name}'")
 
     # Apply registry overrides
     registry_overrides = MODEL_CONFIGS[model_type].get(model_name, {})

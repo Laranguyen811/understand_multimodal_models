@@ -456,8 +456,40 @@ class HypothesisTree:
                         0.01,
                     )
 
-            
-        
+                if verbose:
+                    print(f"threshold: {threshold:.3f}")
+                # Process results and mark nodes above threshold as important
+                for layer in range(
+                    attn_results.shape[0]
+                ):
+                    for head in range(attn_results.shape[1]):
+                        if abs(attn_results[layer,head]) > threshold:
+                            print(
+                                f"Found important head {(head, layer)} at position {pos} with change {attn_results[layer, head]:.3f} in metric."
+                            )
+                            score = attn_results[layer,head],
+                            comp_type = receiver_hook[0].split("_")[-1] # "q_input", "k_input", "v_output", "resid_mid", or "resid_post"
+                            if (
+                                comp_type == "input"
+                            ):
+                                for letter in "qkv":
+                                    if f"_{letter}_" in receiver_hook[0]:
+                                        comp_type = letter
+                                assert comp_type in ["q", "k", "v"], f"Invalid comp_type: {comp_type}, received hook: {receiver_hook[0]}"
+
+                            self.node_stack[(layer,head,pos)].parents.append((node, score, comp_type))
+                            node.children.append((self.node_stack[(layer,head,pos)], score, comp_type))
+                        if(
+                            layer < mlp_results.shape[0] and abs(mlp_results[layer]) > threshold
+                        ):
+                            print(
+                                f"Found important MLP {layer} at position {pos} with change {mlp_results[layer]:.3f} in metric."
+                            )
+                            score = mlp_results[layer]
+                            comp_type = receiver_hook[0].split("_")[-1] # "q_input", "k_input", "v_output", "resid_mid", or "resid_post"
+
+                    
+
 
         
     
