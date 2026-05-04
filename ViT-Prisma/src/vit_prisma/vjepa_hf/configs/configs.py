@@ -35,4 +35,13 @@ CONFIGS = {
             use_sdpa=True,
         )
     },
+    "vjepa_v1_vit_large": VJEPAConfig(
+        model_name="vit_large",
+        uniform_power=True,
+        hidden_size=1024,
+        num_attention_heads=16,
+        num_hidden_layers=24,
+        layer_norm_eps=1e-6,
+        use_sdpa=True,
+    ),
 }

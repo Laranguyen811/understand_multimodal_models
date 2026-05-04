@@ -595,6 +595,7 @@ VJEPA_CONFIGS = {
         "return_type": "pre_logits",
         "eps": 1e-6,
     },
+    
 }
 
 

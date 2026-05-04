@@ -182,6 +182,7 @@ def load_config(
     """
     if model_name not in MODEL_CATEGORIES:
         raise ValueError(f"Model '{model_name}' is not registered in configurations")
+        
 
     if (model_type == ModelType.TEXT 
     and model_name not in TEXT_SUPPORTED_MODELS):
@@ -204,6 +205,12 @@ def load_config(
     elif category in [ModelCategory.CLIP, ModelCategory.VIVIT]:
         old_config = _get_general_hf_config(model_name, model_type)
         new_config = _create_config_from_hf(old_config, model_name, model_type)
+    elif category == ModelCategory.VJEPA:
+        from vit_prisma.vjepa_hf.configs.configs import CONFIGS
+
+        new_config = CONFIGS[model_name]
+        old_config = None  # No HuggingFace config for VJEPA models, just use our custom config
+
     else:
         raise ValueError(f"Unsupported model category: {category} for model '{model_name}'")
 

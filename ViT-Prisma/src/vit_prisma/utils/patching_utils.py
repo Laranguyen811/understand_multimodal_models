@@ -785,7 +785,29 @@ def old_path_patching_up_to(
                 new_data=new_data,
                 senders=[(l,h)],
                 receiver_hooks=receiver_hooks,
+                max_layer=model.cfg.n_layers,
+                position=position,
+                orgin_cache=orig_cache,
+                new_cache=new_cache,
                 
             )   
-
+            attn_results[l,h] = metric(model,dataset) # Assign attention results for a specific layer and head
+            model.reset_hooks() # Reset hooks
+            # mlp
+        model = old_path_patching(
+            model,
+            orig_data=orig_data,
+            new_data=new_data,
+            senders=[(l,None)],
+            receiver_hooks=receiver_hooks,
+            max_layer=model.cfg.n_layers,
+            position=position,
+            orgin_cache=orig_cache,
+            new_cache=new_cache,
+                
+        )
+        mlp_results[l] = metric(model,dataset) # Assign MLP results for a specific layer
+        model.reset_hooks() # Reset hooks
+    return attn_results, mlp_results
+    
 

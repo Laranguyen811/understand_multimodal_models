@@ -13,7 +13,7 @@ from vit_prisma.utils.ioi_utils import show_pp
 import graphviz 
 from vit_prisma.utils import detect_architectures
 from torch import Tensor
-from vit_prisma.utils.patching_utils import direct_path_patching, direct_path_patching_up_to
+from vit_prisma.utils.patching_utils import direct_path_patching, direct_path_patching_up_to, old_path_patching_up_to, old_path_patching
 
 def get_hook_tuple(model:Any,
                    layer: int,
@@ -381,6 +381,13 @@ class HypothesisTree:
         )-> None:
         '''
         Evaluate the hypothesis tree using the direct path patching method.
+        Args:
+            threshold (Union[float, None], optional): The threshold for determining whether a node is important. If None, uses the default threshold. Defaults to None.
+            verbose (bool, optional): Whether to print verbose output during evaluation. Defaults to False.
+            show_graphics (bool, optional): Whether to show graphics of the hypothesis tree during evaluation. Defaults to False.
+            auto_threshold (float, optional): The automatic threshold for determining whether a node is important based on the metric change. Defaults to 0.0.
+        Returns:
+            None
         '''
         if threshold is None:
             threshold = self.threshold
@@ -487,6 +494,217 @@ class HypothesisTree:
                             )
                             score = mlp_results[layer]
                             comp_type = receiver_hook[0].split("_")[-1] # "q_input", "k_input", "v_output", "resid_mid", or "resid_post"
+
+                            if comp_type == "input": 
+                                for letter in "qkv":
+                                    if f"_{letter}_" in receiver_hook[0]:
+                                        comp_type = letter
+                                assert comp_type in [
+                                    "q",
+                                    "k",
+                                    "v",
+                                ], f"{comp_type},{receiver_hook[0]}"
+                            
+                            self.node_stack[
+                                (layer, None, pos)
+                            ].parents.append(
+                                (node, score, comp_type)
+                            )
+                            node.children.append(
+                                (self.node_stack[(layer, None, pos)], score, comp_type)
+                            )
+                        if current_node_position == pos:
+                            break
+                    
+                    while (
+                        len(self.node_stack) > 0
+                        and len(self.node_stack[next(reversed(self.node_stack))].parents) == 0
+                    ):
+                        # Update self.current_node
+                        self.node_stack.popitem()
+                    if len(self.node_stack) > 0:
+                        self.current_node = self.node_stack[next(reversed(self.node_stack))]
+                    else:
+                        self.current_node = None
+    
+    def eval_old(
+            self, 
+            threshold: Union[float, None] = None,
+            verbose: bool = False,
+            show_graphics: bool = True,
+            auto_threshold: float = 0.0,
+    ):
+        '''
+        Processes current_node, then move to next current_node to evaluate.
+        Args:
+            threshold (Union[float, None], optional): The threshold for determining whether a node is important. If None, uses the default threshold. Defaults to None.
+            verbose (bool, optional): Whether to print verbose output during evaluation. Defaults to False.
+            show_graphics (bool, optional): Whether to show graphics of the hypothesis tree during evaluation. Defaults to False.
+            auto_threshold (float, optional): The automatic threshold for determining whether a node is important based on the metric change. Defaults to 0.0.
+        Returns:
+            None
+        '''
+        if threshold is None:
+            threshold = self.threshold
+        _, node = self.node_stack.popitem() # Remove the item last inserted into the node
+        self.important_nodes.append(node)
+        print(f"Currently evaluating node {node}")
+
+        current_node_position = node.position
+        for pos in self.orig_positions:
+            if (
+                current_node_position != pos and node.head is None
+            ):
+                # MLPs and the end state of the residual stream only care about the last position
+                continue
+
+            receiver_hooks = []
+            if node.layer == self.model.cfg.n_layers:
+                receiver_hooks.append((f"blocks.{node.layer-1}.hook_resid_post", None))
+            elif node.head is None:
+                receiver_hooks.append((f"blocks.{node.layer}.hook_mlp_out", None))
+            else:
+                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_v", None))
+                receiver_hooks.append((f"blocks.{node.layer}.attn.hook_k", None))
+                if pos == current_node_position:
+                    receiver_hooks.append((f"blocks.{node.layer}.attn.hook_q", None)) # Only the last position that we care about, similarly
+
+            for receiver_hook in receiver_hooks:
+                if verbose:
+                    print(f"Working on pos {pos}, receiver hook {receiver_hook}")
+
+                (attn_results, mlp_results,) = old_path_patching_up_to(
+                    model=self.model,
+                    layer=node.layer,
+                    metric=self.metric,
+                    dataset=self.dataset,
+                    orig_data=self.orig_data,
+                    new_data=self.new_data,
+                    receiver_hooks=[receiver_hook],
+                    position=self.orig_positions[
+                        pos
+                    ],
+                    orig_cache=self.orig_cache,
+                    new_cache=self.new_cache,
+                )
+
+                # Convert to percentage
+                attn_results -= self.default_metric # Subtract default_metric from attn_results
+                attn_results /= self.default_metric # Divide attn_results by default_metric
+                mlp_results -= self.default_metric # Subtract default_metric from mlp_results
+                mlp_results /= self.default_metric # Divide mlp_results by default_metric
+                if show_graphics:
+                    show_pp(
+                        attn_results,
+                        title=f"Attention results for {node} with receiver hook {receiver_hook}",
+                        xlabel="Layer",
+                        ylabel="",
+                    )
+                if auto_threshold:
+                    threshold = max(
+                        auto_threshold * attn_results.std(),
+                        auto_threshold * mlp_results.std(),
+                        0.01,
+                    )
+                if verbose:
+                    print(f"threshold: {threshold:.3f}")
+                # Process results and mark nodes above threshold as important
+
+                for layer in range(attn_results.shape[0]):
+                    for head in range(attn_results.shape[1]):
+                        if abs(attn_results[layer,head]) > threshold:
+                            print(
+                                "Found important head:",
+                                (layer, head),
+                                "at position",
+                                pos,
+                            )
+                            score = attn_results[layer,head]
+                            comp_type = receiver_hook[0].split("_")[-1] # "q", "k", "v", "resid_mid", or "resid_post"
+                            self.node_stack[(layer,head,pos)].parents.append((
+                                node, score, comp_type
+                            ))
+                            node.children.append((
+                                self.node_stack[(layer,head,pos)], score, comp_type
+                            ))
+                        if abs(mlp_results[layer]) > threshold:
+                            print(
+                                "Found important MLP:",
+                                layer,
+                                "at position",
+                                pos,
+                            )
+                            self.node_stack[(layer, None, pos)].parents.append((
+                                node, score, comp_type
+                            ))
+                            node.children.append((
+                                self.node_stack[(layer, None, pos)], score, comp_type
+                            ))
+        # Update self.current_node
+        while(
+            len(self.node_stack) > 0
+            and len(self.node_stack[next(reversed(self.node_stack))].parents) == 0 # Update current node to the next item last inserted into the node stack that has at least one parent (i.e. at least one important node that leads into it
+            
+        ):
+            self.node_stack.popitem() # Remove the item last inserted into the node stack
+        if len(self.node_stack) > 0:
+            self.current_node = self.node_stack[next(reversed(self.node_stack))] # Update current_node to the next item last inserted into the node stack
+        else:
+            self.current_node = None
+    
+    def show(self, save_file: Optional[str] = None):
+        '''
+        Shows the hypothesis tree using graphviz.
+        Args:
+            save_file (Optional[str], optional): The file path to save the graph visualization. If None, does not save. Defaults to None.
+        Returns:
+            None
+        '''
+        g = graphviz
+        g.attr("node",shape="box")
+        color_dict = {
+            "q":"red",
+            "k":"green",
+            "v":"blue",
+            "mid" : "black", 
+            "post":"black",
+        }
+        # Add each layer as a subgraph with rank-same
+        for layer in range(12):
+            with g.subgraph() as s:
+                s.attr(rank="same")
+                for node in self.important_nodes:
+                    if node.layer == layer:
+                        s.node(node.display())
+    
+        def scale(num: float):
+            '''
+            Scales a number to be between 0 and 1 for visualization purposes.
+            Args:
+                num (float): The number to be scaled.
+            Returns:
+                float: The scaled number.
+            '''
+            return 3 * min(1, abs(num) ** 0.4)
+    
+        for node in self.important_nodes:
+            for child in node.children:
+                g.edge(
+                    child[0].display(),
+                    node.display(),
+                    color=color_dict[child[2]],
+                    penwidth=str(scale(child[1])),
+                    arrowsize=str(scale(child[1])),
+                )
+        # Add invisible edges to maintain order of layers in visualization
+        for i in range(len(self.important_nodes) -1):
+            node1 = self.important_nodes[i]
+            node2 = self.important_nodes[i+1]
+            if node1.layer != node2.layer:
+                g.edge(node1.display(), node2.display(), style="invis")
+        return g
+
+
 
                     
 
