@@ -17,6 +17,7 @@ import torch.nn as nn
 from vit_prisma.configs.HookedTextTransformerConfig import HookedTextTransformerConfig
 
 from vit_prisma.configs.HookedViTConfig import HookedViTConfig
+from vit_prisma.vjepa_hf.configs.configs import CONFIGS
 
 # Import configuration dictionaries - these are just static data
 from vit_prisma.models.model_config_registry import (
@@ -206,7 +207,6 @@ def load_config(
         old_config = _get_general_hf_config(model_name, model_type)
         new_config = _create_config_from_hf(old_config, model_name, model_type)
     elif category == ModelCategory.VJEPA:
-        from vit_prisma.vjepa_hf.configs.configs import CONFIGS
 
         new_config = CONFIGS[model_name]
         old_config = None  # No HuggingFace config for VJEPA models, just use our custom config

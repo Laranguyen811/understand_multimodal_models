@@ -3,7 +3,7 @@ from vit_prisma.vjepa_hf.modeling_vjepa import VJEPAConfig
 CONFIGS = {
     "v1": {
         "vit_h": VJEPAConfig(
-            model_name="vit_huge",
+            model_name="vjepa__v1_vit_huge",
             uniform_power=True,
             hidden_size=1280,
             num_attention_heads=16,
@@ -12,7 +12,7 @@ CONFIGS = {
             use_sdpa=True,
         ),
         "vit_h_384": VJEPAConfig(
-            model_name="vit_huge",
+            model_name="vjepa__v1_vit_huge",
             crop_size=384,
             uniform_power=True,
             hidden_size=1280,
@@ -24,7 +24,7 @@ CONFIGS = {
     },
     "v1.5": {
         "vit_g_256": VJEPAConfig(
-            model_name="vit_giant_xformers_rope",
+            model_name="vjepa__v1_vit_giant_xformers_rope",
             crop_size=256,
             uniform_power=True,
             hidden_size=1408,
@@ -35,13 +35,5 @@ CONFIGS = {
             use_sdpa=True,
         )
     },
-    "vjepa_v1_vit_large": VJEPAConfig(
-        model_name="vit_large",
-        uniform_power=True,
-        hidden_size=1024,
-        num_attention_heads=16,
-        num_hidden_layers=24,
-        layer_norm_eps=1e-6,
-        use_sdpa=True,
-    ),
+
 }

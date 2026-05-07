@@ -56,13 +56,13 @@ def run_imagenet():
 
         
 # 1. LOAD HOOKED MODEL
-og_model_name = "vjepa_v1_vit_huge"
+og_model_name = "vit_huge"
 print("Loading hooked model")
 hooked_model = HookedViT.from_pretrained(og_model_name, is_timm=False, is_clip=False, fold_ln=False) # in future, do all models
 print("hooked model config", hooked_model.cfg)
 
 # 2. LOAD ORIGINAL MODEL
-model_name = "vjepa_v1_vit_huge"
+model_name = "vit_giant_xformers_rope"
 config = CONFIGS["v1"]["vit_h"]
 model_paths = yaml.safe_load(open('paths_cw.yaml'))
 model_path = model_paths[model_name]["loc"]
