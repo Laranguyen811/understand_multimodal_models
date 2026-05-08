@@ -3,7 +3,7 @@ from vit_prisma.vjepa_hf.modeling_vjepa import VJEPAConfig
 CONFIGS = {
     "v1": {
         "vit_h": VJEPAConfig(
-            model_name="vjepa__v1_vit_huge",
+            model_name="vjepa_v1_vit_huge",
             uniform_power=True,
             hidden_size=1280,
             num_attention_heads=16,
@@ -12,7 +12,7 @@ CONFIGS = {
             use_sdpa=True,
         ),
         "vit_h_384": VJEPAConfig(
-            model_name="vjepa__v1_vit_huge",
+            model_name="vjepa_v1_vit_huge",
             crop_size=384,
             uniform_power=True,
             hidden_size=1280,

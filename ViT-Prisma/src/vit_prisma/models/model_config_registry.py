@@ -589,13 +589,13 @@ VIVIT_CONFIGS = {
 
 # VJEPA model configurations
 VJEPA_CONFIGS = {
-    "vjepa__v1_vit_huge": {
+    "vjepa_v1_vit_huge": {
         "use_cls_token": False,
         "layer_norm_pre": False,
         "return_type": "pre_logits",
         "eps": 1e-6,
     },
-    "vjepa__v1_vit_giant_xformers_rope": {
+    "vjepa_v1_vit_giant_xformers_rope": {
         "use_cls_token": False,
         "layer_norm_pre": False,
         "return_type": "pre_logits",

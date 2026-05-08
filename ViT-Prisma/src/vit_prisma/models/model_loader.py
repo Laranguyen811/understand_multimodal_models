@@ -125,6 +125,7 @@ PASSING_MODELS = {
     "openai/clip-vit-large-patch14-336",
     "openai/clip-vit-large-patch14",
     "openai/clip-vit-base-patch32",
+    "vjepa_v1_vit_huge"
 }
 
 FAILING_MODELS = {
