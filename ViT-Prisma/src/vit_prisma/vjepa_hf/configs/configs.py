@@ -1,9 +1,8 @@
 from vit_prisma.vjepa_hf.modeling_vjepa import VJEPAConfig
 
 CONFIGS = {
-    "v1": {
-        "vit_h": VJEPAConfig(
-            model_name="vjepa_v1_vit_huge",
+    "vjepa_v1_vit_huge": VJEPAConfig(
+            crop_size=256,
             uniform_power=True,
             hidden_size=1280,
             num_attention_heads=16,
@@ -11,8 +10,7 @@ CONFIGS = {
             layer_norm_eps=1e-6,
             use_sdpa=True,
         ),
-        "vit_h_384": VJEPAConfig(
-            model_name="vjepa_v1_vit_huge",
+    "vjepa_v1_vit_huge_384": VJEPAConfig(
             crop_size=384,
             uniform_power=True,
             hidden_size=1280,
@@ -21,10 +19,7 @@ CONFIGS = {
             layer_norm_eps=1e-6,
             use_sdpa=True,
         ),
-    },
-    "v1.5": {
-        "vit_g_256": VJEPAConfig(
-            model_name="vjepa__v1_vit_giant_xformers_rope",
+    "vjepa_v1_vit_giant_xformers_rope": VJEPAConfig(
             crop_size=256,
             uniform_power=True,
             hidden_size=1408,
@@ -33,7 +28,6 @@ CONFIGS = {
             use_rope=True,
             mlp_ratio=48 / 11,
             use_sdpa=True,
-        )
-    },
+        ),
 
 }

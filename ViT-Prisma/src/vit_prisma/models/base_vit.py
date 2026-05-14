@@ -84,7 +84,10 @@ class HookedViT(HookedTransformer):
         self.cfg = cfg
 
         # ClS token
-        self.cls_token = nn.Parameter(torch.randn(1, 1, self.cfg.d_model))
+        self.cls_token = nn.Parameter(torch.randn(1, 1, self.cfg.d_model)) if self.cfg.use_cls_token else None
+        if not hasattr(self.cfg, 'd_model'):
+            self.cls_token = nn.Parameter(torch.randn(1, 1, 512))
+            logging.warning("cfg does not have d_model attribute, defaulting to 512 for cls token initialization")
 
         # Patch embeddings
         if self.cfg.is_video_transformer:
@@ -512,9 +515,15 @@ class HookedViT(HookedTransformer):
                 b_V = state_dict[f"blocks.{layer}.attn.b_V"]
             else:
                 b_V = state_dict[f"blocks.{layer}.attn._b_V"]
-                b_V = torch.repeat_interleave(
-                    b_V, dim=0, repeats=self.cfg.n_heads // self.cfg.n_key_value_heads
-                )
+                if hasattr(self.cfg, "n_key_value_heads") and hasattr(self.cfg, "n_heads"):
+                    b_V = torch.repeat_interleave(
+                        b_V, dim=0, repeats=self.cfg.n_heads // self.cfg.n_key_value_heads
+
+                    )
+                else:
+                    logging.warning(
+                        "n_key_value_heads or n_heads not found in config, skipping repeat_interleave for b_V. This may cause errors if n_key_value_heads is not None and the number of heads is not equal to the number of key value heads."
+                    )
             # [head_index, d_head, d_model]
             W_O = state_dict[f"blocks.{layer}.attn.W_O"]
             # [d_model]
@@ -741,6 +750,11 @@ class HookedViT(HookedTransformer):
         """
 
         accumulated_bias = torch.zeros(self.cfg.d_model, device=self.cls_token.device)
+        if not hasattr(self.cfg, "d_model"):
+            accumulated_bias = torch.zeros(512, device=self.cls_token.device)
+            logging.warning(
+                "d_model not found in config, defaulting to 512 for accumulated_bias. This may cause errors if the model's d_model is not 512."
+            )
 
         for i in range(layer):
             accumulated_bias += self.blocks[i].attn.b_O

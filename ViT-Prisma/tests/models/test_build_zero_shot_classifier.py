@@ -4,7 +4,7 @@ import pytest
 from vit_prisma.models.build_zero_shot_classifier import zero_shot_classifier, build_zero_shot_classifier
 from transformers import AutoTokenizer
 from vit_prisma.utils.openai_templates import OPENAI_IMAGENET_TEMPLATES
-# Test for building zero-shot classifiers
+
 def test_zero_shot_classifier():
     classifier = zero_shot_classifier("openai/clip-vit-large-patch14", tokenizer=AutoTokenizer.from_pretrained("openai/clip-vit-large-patch14"), classnames=["cat", "dog"], templates=OPENAI_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)
     print(classifier)
@@ -27,7 +27,6 @@ def test_zero_shot_classifier_invalid_tokenizer():
         zero_shot_classifier("vit_base_patch16_224", tokenizer=AutoTokenizer.from_pretrained(invalid_tokenizer_name), classnames=["cat", "dog"], templates=OPENAI_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)
     print(ValueError, f"Expected ValueError for invalid tokenizer name: {invalid_tokenizer_name}")
     
-# TODO: test zero-shot classifier with invalid classnames
 def test_zero_shot_classifier_invalid_classnames():
     invalid_classnames = ["", ""]  # Empty class names
     with pytest.raises(ValueError):
@@ -40,7 +39,13 @@ def test_zero_shot_classifier_all_models():
         classifier = zero_shot_classifier(model_name, tokenizer=AutoTokenizer.from_pretrained(model_name), classnames=["cat", "dog"], templates=OPENAI_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)
         print(classifier)
         assert classifier is not None
-#TODO: test building zero-shot classifiers for all models, and also test that the classifiers have the expected shape and values
+
+#TODO: Add more tests for edge cases, such as invalid templates, missing classnames, and unsupported model types.
+def test_zero_shot_classifier_invalid_device():
+    invalid_device = "invalid_device"
+    with pytest.raises(ValueError):
+        zero_shot_classifier("vit_base_patch16_224", tokenizer=AutoTokenizer.from_pretrained("openai/clip-vit-large-patch14"), classnames=["cat", "dog"], templates=OPENAI_IMAGENET_TEMPLATES, device=invalid_device, amp=True, use_format=False)
+    print(ValueError, f"Expected ValueError for invalid device: {invalid_device}")
 def test_build_zero_shot_classifier_all_models():
     for model_name in MODEL_CATEGORIES:
         print(f"Testing zero-shot classifier for model: {model_name}")

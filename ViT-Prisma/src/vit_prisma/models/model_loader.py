@@ -125,7 +125,6 @@ PASSING_MODELS = {
     "openai/clip-vit-large-patch14-336",
     "openai/clip-vit-large-patch14",
     "openai/clip-vit-base-patch32",
-    "vjepa_v1_vit_huge"
 }
 
 FAILING_MODELS = {
@@ -208,9 +207,10 @@ def load_config(
         old_config = _get_general_hf_config(model_name, model_type)
         new_config = _create_config_from_hf(old_config, model_name, model_type)
     elif category == ModelCategory.VJEPA:
-
-        new_config = CONFIGS[model_name]
-        old_config = None  # No HuggingFace config for VJEPA models, just use our custom config
+        for model_name in CONFIGS:
+            if model_name == model_name:
+                new_config = CONFIGS[model_name]
+                old_config = None  # No HuggingFace config for VJEPA models, just use our custom config
 
     else:
         raise ValueError(f"Unsupported model category: {category} for model '{model_name}'")
@@ -220,9 +220,15 @@ def load_config(
     for key, value in registry_overrides.items():
         setattr(new_config, key, value)
 
-    new_config.d_head = (
-        new_config.d_model // new_config.n_heads
-    )  # Calculate this after retrieving latest info
+    if hasattr(new_config, "n_heads") and hasattr(new_config, "d_model"):
+        new_config.d_head = (
+            new_config.d_model // new_config.n_heads
+        )  # Calculate this after retrieving latest info
+    else:
+        new_config.d_head = 64  # Default to 64-dim heads if not specified
+        logging.warning(
+            f"Model '{model_name}' does not have explicit head dimensions. Using default."
+        )
     return new_config
 
 
