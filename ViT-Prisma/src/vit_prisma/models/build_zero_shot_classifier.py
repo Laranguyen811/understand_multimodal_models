@@ -2,7 +2,7 @@
 Build zero shot classifier for CLIP to classify image embeddings into your choice of text classes in the CLIP semantic space.
 """
 
-from vit_prisma.utils.openai_templates import OPENAI_IMAGENET_TEMPLATES
+from vit_prisma.utils.templates.open_ai.openai_templates import OPENAI_IMAGENET_TEMPLATES
 from vit_prisma.dataloaders.imagenet_classes_simple import imagenet_classes
 from vit_prisma.utils.data_utils.imagenet.imagenet100_classes import (
     imagenet100_classes,

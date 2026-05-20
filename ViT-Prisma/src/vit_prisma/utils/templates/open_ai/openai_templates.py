@@ -80,3 +80,5 @@ OPENAI_IMAGENET_TEMPLATES = (
     lambda c: f'a photo of a small {c}.',
     lambda c: f'a tattoo of the {c}.',
 )
+
+

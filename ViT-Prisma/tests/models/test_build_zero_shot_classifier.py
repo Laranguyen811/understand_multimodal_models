@@ -3,7 +3,7 @@ from vit_prisma.models.model_config_registry import MODEL_CATEGORIES
 import pytest
 from vit_prisma.models.build_zero_shot_classifier import zero_shot_classifier, build_zero_shot_classifier
 from transformers import AutoTokenizer
-from vit_prisma.utils.openai_templates import OPENAI_IMAGENET_TEMPLATES
+from vit_prisma.utils.templates.open_ai.openai_templates import OPENAI_IMAGENET_TEMPLATES
 
 def test_zero_shot_classifier():
     classifier = zero_shot_classifier("openai/clip-vit-large-patch14", tokenizer=AutoTokenizer.from_pretrained("openai/clip-vit-large-patch14"), classnames=["cat", "dog"], templates=OPENAI_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)

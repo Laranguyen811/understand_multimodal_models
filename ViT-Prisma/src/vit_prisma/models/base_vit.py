@@ -90,8 +90,10 @@ class HookedViT(HookedTransformer):
             logging.warning("cfg does not have d_model attribute, defaulting to 512 for cls token initialization")
 
         # Patch embeddings
-        if self.cfg.is_video_transformer:
-            self.embed = TubeletEmbedding(self.cfg)
+        if hasattr(self.cfg, "is_video_transformer"):
+            if self.cfg.is_video_transformer:
+                logging.info("Using Tubelet Embedding for video transformer")
+                self.embed = TubeletEmbedding(self.cfg)
         else:
             self.embed = PatchEmbedding(self.cfg)
 
@@ -103,24 +105,29 @@ class HookedViT(HookedTransformer):
 
         self.hook_full_embed = HookPoint()
 
-        if self.cfg.layer_norm_pre:  # Put layernorm after attn/mlp layers, not before
-            if self.cfg.normalization_type == "LN":
-                self.ln_pre = LayerNorm(self.cfg)
-            elif self.cfg.normalization_type == "LNPre":
-                self.ln_pre = LayerNormPre(self.cfg)
-            elif self.cfg.normalization_type is None:
-                self.ln_pre = nn.Identity()
+        if hasattr(self.cfg, "layer_norm_pre"): 
+            if self.cfg.layer_norm_pre:
+            # Put layernorm after attn/mlp layers, not before
+                if self.cfg.normalization_type == "LN":
+                    self.ln_pre = LayerNorm(self.cfg)
+                elif self.cfg.normalization_type == "LNPre":
+                    self.ln_pre = LayerNormPre(self.cfg)
+                elif self.cfg.normalization_type is None:
+                    self.ln_pre = nn.Identity()
+                else:
+                    raise ValueError(
+                        f"Invalid normalization type: {self.cfg.normalization_type}"
+                    )
+                self.hook_ln_pre = HookPoint()
             else:
-                raise ValueError(
-                    f"Invalid normalization type: {self.cfg.normalization_type}"
-                )
-            self.hook_ln_pre = HookPoint()
-        else:
-            print("ln_pre not set")
+                print("ln_pre not set")
 
         # Blocks
-        if self.cfg.use_bert_block:
-            block = BertBlock
+        if hasattr(self.cfg, "use_bert_block"):
+            if self.cfg.use_bert_block:
+                block = BertBlock
+            else:
+                block = TransformerBlock
         else:
             block = TransformerBlock
 
@@ -128,12 +135,13 @@ class HookedViT(HookedTransformer):
             [block(self.cfg, block_index) for block_index in range(self.cfg.n_layers)]
         )
         # Final layer norm
-        if self.cfg.normalization_type == "LN":
-            self.ln_final = LayerNorm(self.cfg)
-        elif self.cfg.normalization_type == "LNPre":
-            self.ln_final = LayerNormPre(self.cfg)
-        elif self.cfg.normalization_type is None:
-            self.ln_final = nn.Identity()
+        if hasattr(self.cfg, "normalization_type"):
+            if self.cfg.normalization_type == "LN":
+                self.ln_final = LayerNorm(self.cfg)
+            elif self.cfg.normalization_type == "LNPre":
+                self.ln_final = LayerNormPre(self.cfg)
+            elif self.cfg.normalization_type is None:
+                self.ln_final = nn.Identity()
         else:
             raise ValueError(
                 f"Invalid normalization type: {self.cfg.normalization_type}"
@@ -171,11 +179,12 @@ class HookedViT(HookedTransformer):
 
         embed = self.hook_embed(self.embed(input))
 
-        if self.cfg.use_cls_token:
-            cls_tokens = self.cls_token.expand(
-                batch_size, -1, -1
-            )  # CLS token for each item in the batch
-            embed = torch.cat((cls_tokens, embed), dim=1)  # Add to embedding
+        if hasattr(self.cfg, "use_cls_token"):
+            if self.cfg.use_cls_token:
+                cls_tokens = self.cls_token.expand(
+                    batch_size, -1, -1
+                )  # CLS token for each item in the batch
+                embed = torch.cat((cls_tokens, embed), dim=1)  # Add to embedding
 
         pos_embed = self.hook_pos_embed(self.pos_embed(input))
 
@@ -183,9 +192,10 @@ class HookedViT(HookedTransformer):
 
         self.hook_full_embed(residual)
 
-        if self.cfg.layer_norm_pre:
-            residual = self.ln_pre(residual)
-            residual = self.hook_ln_pre(residual)
+        if hasattr(self.cfg, "layer_norm_pre"): 
+            if self.cfg.layer_norm_pre:
+                residual = self.ln_pre(residual)
+                residual = self.hook_ln_pre(residual)
 
         for block in self.blocks[:stop_at_layer]:
             residual = block(residual)
@@ -195,16 +205,18 @@ class HookedViT(HookedTransformer):
         x = self.ln_final(residual)
         self.hook_ln_final(x)
 
-        if self.cfg.classification_type == "gaap":  # GAAP
+        if hasattr(self.cfg, "classification_type"): 
+            if self.cfg.classification_type == "gaap":  # GAAP
 
-            x = x.mean(dim=1)
-            print(self.cfg.return_type)
-        elif self.cfg.classification_type == "cls":  # CLS token
-            cls_token = x[:, 0]
-            if "dino-vitb" in self.cfg.model_name:
-                patches = x[:, 1:]
-                patches_pooled = patches.mean(dim=1)
-                x = torch.cat(
+                x = x.mean(dim=1)
+                print(self.cfg.return_type)
+        elif hasattr(self.cfg, "classification_type"): 
+            if self.cfg.classification_type == "cls":  # CLS token
+                cls_token = x[:, 0]
+                if "dino-vitb" in self.cfg.model_name:
+                    patches = x[:, 1:]
+                    patches_pooled = patches.mean(dim=1)
+                    x = torch.cat(
                     (cls_token.unsqueeze(-1), patches_pooled.unsqueeze(-1)), dim=-1
                 )
             else:
@@ -214,36 +226,39 @@ class HookedViT(HookedTransformer):
 
         self.hook_post_head_pre_normalize(x)
 
-        if self.cfg.normalize_output:
-            x = F.normalize(x, dim=-1)
+        if hasattr(self.cfg, "normalize_output"):
+            if self.cfg.normalize_output:
+                x = F.normalize(x, dim=-1)
 
         return x
 
     def init_weights(self):
-        if self.cfg.use_cls_token:
-            nn.init.normal_(self.cls_token, std=self.cfg.cls_std)
+        if hasattr(self.cfg, "use_cls_token"):
+            if self.cfg.use_cls_token:
+                nn.init.normal_(self.cls_token, std=self.cfg.cls_std)
         # nn.init.trunc_normal_(self.position_embedding, std=self.cfg.pos_std)
-        if self.cfg.weight_type == "he":
-            for m in self.modules():
-                if isinstance(m, PosEmbedding):
-                    nn.init.normal_(m.W_pos, std=self.cfg.pos_std)
-                elif isinstance(m, Attention):
-                    nn.init.xavier_uniform_(m.W_Q)
-                    nn.init.xavier_uniform_(m.W_K)
-                    nn.init.xavier_uniform_(m.W_V)
-                    nn.init.xavier_uniform_(m.W_O)
-                elif isinstance(m, MLP):
-                    nn.init.kaiming_normal_(m.W_in, nonlinearity="relu")
-                    nn.init.kaiming_normal_(m.W_out, nonlinearity="relu")
-                    nn.init.zeros_(m.b_out)
-                    nn.init.zeros_(m.b_in)
-                elif isinstance(m, Head):
-                    nn.init.kaiming_normal_(m.W_H, nonlinearity="relu")
-                    nn.init.zeros_(m.b_H)
-                elif isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
-                    nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
-                    if m.bias is not None:
-                        nn.init.constant_(m.bias, 0)
+        if hasattr(self.cfg, "weight_type"):
+            if self.cfg.weight_type == "he":
+                for m in self.modules():
+                    if isinstance(m, PosEmbedding):
+                        nn.init.normal_(m.W_pos, std=self.cfg.pos_std)
+                    elif isinstance(m, Attention):
+                        nn.init.xavier_uniform_(m.W_Q)
+                        nn.init.xavier_uniform_(m.W_K)
+                        nn.init.xavier_uniform_(m.W_V)
+                        nn.init.xavier_uniform_(m.W_O)
+                    elif isinstance(m, MLP):
+                        nn.init.kaiming_normal_(m.W_in, nonlinearity="relu")
+                        nn.init.kaiming_normal_(m.W_out, nonlinearity="relu")
+                        nn.init.zeros_(m.b_out)
+                        nn.init.zeros_(m.b_in)
+                    elif isinstance(m, Head):
+                        nn.init.kaiming_normal_(m.W_H, nonlinearity="relu")
+                        nn.init.zeros_(m.b_H)
+                    elif isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                        nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
+                        if m.bias is not None:
+                            nn.init.constant_(m.bias, 0)
 
     def run_with_cache(
         self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs
@@ -379,28 +394,29 @@ class HookedViT(HookedTransformer):
                 )
 
             # Fold ln2 into MLP
-            if not self.cfg.attn_only:
-                if fold_biases:
-                    state_dict[f"blocks.{l}.mlp.b_in"] = state_dict[
-                        f"blocks.{l}.mlp.b_in"
-                    ] + (
+            if hasattr(self.cfg, "attn_only"):
+                if not self.cfg.attn_only:
+                    if fold_biases:
+                        state_dict[f"blocks.{l}.mlp.b_in"] = state_dict[
+                            f"blocks.{l}.mlp.b_in"
+                        ] + (
+                            state_dict[f"blocks.{l}.mlp.W_in"]
+                            * state_dict[f"blocks.{l}.ln2.b"][:, None]
+                        ).sum(
+                            -2
+                        )
+                        del state_dict[f"blocks.{l}.ln2.b"]
+
+                    state_dict[f"blocks.{l}.mlp.W_in"] = (
                         state_dict[f"blocks.{l}.mlp.W_in"]
-                        * state_dict[f"blocks.{l}.ln2.b"][:, None]
-                    ).sum(
-                        -2
-                    )
-                    del state_dict[f"blocks.{l}.ln2.b"]
-
-                state_dict[f"blocks.{l}.mlp.W_in"] = (
-                    state_dict[f"blocks.{l}.mlp.W_in"]
-                    * state_dict[f"blocks.{l}.ln2.w"][:, None]
-                )
-
-                if self.cfg.gated_mlp:
-                    state_dict[f"blocks.{l}.mlp.W_gate"] = (
-                        state_dict[f"blocks.{l}.mlp.W_gate"]
                         * state_dict[f"blocks.{l}.ln2.w"][:, None]
                     )
+                if hasattr(self.cfg, "gated_mlp"):
+                    if self.cfg.gated_mlp:
+                        state_dict[f"blocks.{l}.mlp.W_gate"] = (
+                            state_dict[f"blocks.{l}.mlp.W_gate"]
+                            * state_dict[f"blocks.{l}.ln2.w"][:, None]
+                        )
 
                 del state_dict[f"blocks.{l}.ln2.w"]
 
@@ -411,46 +427,47 @@ class HookedViT(HookedTransformer):
                         "d_model d_mlp -> 1 d_mlp",
                         "mean",
                     )
+                
+                if hasattr(self.cfg, "activation_name"):
+                    if self.cfg.activation_name.startswith("solu"):
+                        # Fold ln3 into activation
+                        if fold_biases:
+                            state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[
+                                f"blocks.{l}.mlp.b_out"
+                            ] + (
+                                state_dict[f"blocks.{l}.mlp.W_out"]
+                                * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]
+                            ).sum(
+                                -2
+                            )
 
-                if self.cfg.activation_name.startswith("solu"):
-                    # Fold ln3 into activation
-                    if fold_biases:
-                        state_dict[f"blocks.{l}.mlp.b_out"] = state_dict[
-                            f"blocks.{l}.mlp.b_out"
-                        ] + (
+                            del state_dict[f"blocks.{l}.mlp.ln.b"]
+
+                        state_dict[f"blocks.{l}.mlp.W_out"] = (
                             state_dict[f"blocks.{l}.mlp.W_out"]
-                            * state_dict[f"blocks.{l}.mlp.ln.b"][:, None]
-                        ).sum(
-                            -2
+                            * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
                         )
 
-                        del state_dict[f"blocks.{l}.mlp.ln.b"]
+                        if center_weights:
+                            # Center the weights that read in from the LayerNormPre
+                            state_dict[f"blocks.{l}.mlp.W_out"] -= einops.reduce(
+                                state_dict[f"blocks.{l}.mlp.W_out"],
+                                "d_mlp d_model -> 1 d_model",
+                                "mean",
+                            )
 
-                    state_dict[f"blocks.{l}.mlp.W_out"] = (
-                        state_dict[f"blocks.{l}.mlp.W_out"]
-                        * state_dict[f"blocks.{l}.mlp.ln.w"][:, None]
-                    )
+                        del state_dict[f"blocks.{l}.mlp.ln.w"]
+        if hasattr(self.cfg, "final_rms"):
+            if not self.cfg.final_rms and fold_biases:
+                state_dict[f"head.b_H"] = state_dict[f"head.b_H"] + (
+                    state_dict[f"head.W_H"] * state_dict[f"ln_final.b"][:, None]
+                ).sum(dim=-2)
+                del state_dict[f"ln_final.b"]
 
-                    if center_weights:
-                        # Center the weights that read in from the LayerNormPre
-                        state_dict[f"blocks.{l}.mlp.W_out"] -= einops.reduce(
-                            state_dict[f"blocks.{l}.mlp.W_out"],
-                            "d_mlp d_model -> 1 d_model",
-                            "mean",
-                        )
-
-                    del state_dict[f"blocks.{l}.mlp.ln.w"]
-
-        if not self.cfg.final_rms and fold_biases:
-            state_dict[f"head.b_H"] = state_dict[f"head.b_H"] + (
-                state_dict[f"head.W_H"] * state_dict[f"ln_final.b"][:, None]
-            ).sum(dim=-2)
-            del state_dict[f"ln_final.b"]
-
-        state_dict[f"head.W_H"] = (
-            state_dict[f"head.W_H"] * state_dict[f"ln_final.w"][:, None]
-        )
-        del state_dict[f"ln_final.w"]
+            state_dict[f"head.W_H"] = (
+                state_dict[f"head.W_H"] * state_dict[f"ln_final.w"][:, None]
+            )
+            del state_dict[f"ln_final.w"]
 
         if center_weights:
             # Center the weights that read in from the LayerNormPre
@@ -472,31 +489,33 @@ class HookedViT(HookedTransformer):
         # state_dict["embed.W_E"] = state_dict["embed.W_E"] - state_dict[
         #     "embed.W_E"
         # ].mean(-1, keepdim=True)
-        if self.cfg.positional_embedding_type != "rotary":
-            state_dict["pos_embed.W_pos"] = state_dict["pos_embed.W_pos"] - state_dict[
-                "pos_embed.W_pos"
-            ].mean(-1, keepdim=True)
-        for l in range(self.cfg.n_layers):
-            state_dict[f"blocks.{l}.attn.W_O"] = state_dict[
-                f"blocks.{l}.attn.W_O"
-            ] - state_dict[f"blocks.{l}.attn.W_O"].mean(
-                -1, keepdim=True
-            )  # W_O is [head_index, d_model, d_head]
-            state_dict[f"blocks.{l}.attn.b_O"] = (
-                state_dict[f"blocks.{l}.attn.b_O"]
-                - state_dict[f"blocks.{l}.attn.b_O"].mean()
-            )  # b_O is [d_model]
-            if not self.cfg.attn_only:
-                state_dict[f"blocks.{l}.mlp.W_out"] = state_dict[
-                    f"blocks.{l}.mlp.W_out"
-                ] - state_dict[f"blocks.{l}.mlp.W_out"].mean(-1, keepdim=True)
-                state_dict[f"blocks.{l}.mlp.b_out"] = (
-                    state_dict[f"blocks.{l}.mlp.b_out"]
-                    - state_dict[f"blocks.{l}.mlp.b_out"].mean()
-                )
+        if hasattr(self.cfg, "positional_embedding_type"):
+            if self.cfg.positional_embedding_type != "rotary":
+                state_dict["pos_embed.W_pos"] = state_dict["pos_embed.W_pos"] - state_dict[
+                    "pos_embed.W_pos"
+                ].mean(-1, keepdim=True)
+            for l in range(self.cfg.n_layers):
+                state_dict[f"blocks.{l}.attn.W_O"] = state_dict[
+                    f"blocks.{l}.attn.W_O"
+                ] - state_dict[f"blocks.{l}.attn.W_O"].mean(
+                    -1, keepdim=True
+                )  # W_O is [head_index, d_model, d_head]
+                state_dict[f"blocks.{l}.attn.b_O"] = (
+                    state_dict[f"blocks.{l}.attn.b_O"]
+                    - state_dict[f"blocks.{l}.attn.b_O"].mean()
+                )  # b_O is [d_model]
+            if hasattr(self.cfg, "attn_only"):
+                if not self.cfg.attn_only:
+                    state_dict[f"blocks.{l}.mlp.W_out"] = state_dict[
+                        f"blocks.{l}.mlp.W_out"
+                    ] - state_dict[f"blocks.{l}.mlp.W_out"].mean(-1, keepdim=True)
+                    state_dict[f"blocks.{l}.mlp.b_out"] = (
+                        state_dict[f"blocks.{l}.mlp.b_out"]
+                        - state_dict[f"blocks.{l}.mlp.b_out"].mean()
+                    )
 
-        print("Centered weights writing to residual stream")
-        return state_dict
+            print("Centered weights writing to residual stream")
+            return state_dict
 
     def fold_value_biases(self, state_dict: Dict[str, torch.Tensor]):
         """Fold the value biases into the output bias.
