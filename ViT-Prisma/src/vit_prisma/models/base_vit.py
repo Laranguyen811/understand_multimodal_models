@@ -45,6 +45,7 @@ from contextlib import contextmanager
 from typing import Any, Callable, List
 
 from vit_prisma.sae.sae import SparseAutoencoder as SAE
+import warnings
 
 DTYPE_FROM_STRING = {
     "float32": torch.float32,
@@ -68,6 +69,7 @@ class HookedViT(HookedTransformer):
     def __init__(
         self,
         cfg: HookedViTConfig,
+        n_layers: int = 12,
     ):
         """
         Model initialization
@@ -131,21 +133,28 @@ class HookedViT(HookedTransformer):
         else:
             block = TransformerBlock
 
-        self.blocks = nn.ModuleList(
-            [block(self.cfg, block_index) for block_index in range(self.cfg.n_layers)]
-        )
+        if hasattr(self.cfg, "n_layers"):
+            self.blocks = nn.ModuleList(
+                [block(self.cfg, block_index) for block_index in range(self.cfg.n_layers)]
+            )
+        elif n_layers is not None:
+            self.blocks = nn.ModuleList(
+                [block(self.cfg, block_index) for block_index in range(n_layers)]
+            )
+            warnings.warn("n_layers not found in config. Using provided n_layers argument.")
+        else:
+            raise ValueError("n_layers not found in config. Please specify the number of layers.")
+
         # Final layer norm
-        if hasattr(self.cfg, "normalization_type"):
+        if (hasattr(self.cfg, "normalization_type")
+            and self.cfg.normalization_type is not None):
             if self.cfg.normalization_type == "LN":
                 self.ln_final = LayerNorm(self.cfg)
             elif self.cfg.normalization_type == "LNPre":
                 self.ln_final = LayerNormPre(self.cfg)
-            elif self.cfg.normalization_type is None:
-                self.ln_final = nn.Identity()
         else:
-            raise ValueError(
-                f"Invalid normalization type: {self.cfg.normalization_type}"
-            )
+            warnings.warn("normalization_type not found in config or is None. Defaulting to no final layer norm.")
+            self.ln_final = nn.Identity()
 
         self.hook_ln_final = HookPoint()
 
@@ -185,6 +194,8 @@ class HookedViT(HookedTransformer):
                     batch_size, -1, -1
                 )  # CLS token for each item in the batch
                 embed = torch.cat((cls_tokens, embed), dim=1)  # Add to embedding
+        else:
+            logging.warning("use_cls_token not found in config, not using CLS token.")
 
         pos_embed = self.hook_pos_embed(self.pos_embed(input))
 
@@ -196,6 +207,9 @@ class HookedViT(HookedTransformer):
             if self.cfg.layer_norm_pre:
                 residual = self.ln_pre(residual)
                 residual = self.hook_ln_pre(residual)
+        else:
+            logging.warning("layer_norm_pre not found in config, skipping ln_pre.")
+            self.ln_pre = nn.Identity()
 
         for block in self.blocks[:stop_at_layer]:
             residual = block(residual)
@@ -205,7 +219,8 @@ class HookedViT(HookedTransformer):
         x = self.ln_final(residual)
         self.hook_ln_final(x)
 
-        if hasattr(self.cfg, "classification_type"): 
+        if (hasattr(self.cfg, "classification_type")
+            and self.cfg.classification_type is not None):
             if self.cfg.classification_type == "gaap":  # GAAP
 
                 x = x.mean(dim=1)
@@ -221,8 +236,16 @@ class HookedViT(HookedTransformer):
                 )
             else:
                 x = cls_token
+        else:
+            warnings.warn("classification_type not found in config or is None. Defaulting to GAAP classification.")
+            x = x.mean(dim=1)
 
-        x = x if self.cfg.return_type == "pre_logits" else self.head(x)
+
+        if (hasattr(self.cfg, "return_type") 
+            and self.cfg.return_type == "pre_logits"):
+            x = x
+        else:
+            x = self.head(x)
 
         self.hook_post_head_pre_normalize(x)
 

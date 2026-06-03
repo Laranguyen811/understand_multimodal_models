@@ -31,6 +31,10 @@ class HookedTextTransformer(HookedTransformer):
         no_causal_mask: bool = False,
         proj_type: str = "linear",
         cls_token: bool = False,
+        context_length: int = 77,
+        vocab_size: int = 49408,
+        d_model: int = 512,
+        n_layers: int = 3,
     ):
         super().__init__()
 
@@ -44,19 +48,35 @@ class HookedTextTransformer(HookedTransformer):
             )
         self.cfg = cfg
 
-        self.num_pos = self.context_length = self.cfg.context_length
-
-        self.token_embed = nn.Embedding(self.cfg.vocab_size, self.cfg.d_model)
+        if hasattr(self.cfg, "context_length"):
+            self.num_pos = self.context_length = self.cfg.context_length
+        else:
+            self.num_pos = self.context_length = context_length
+        
+        if (hasattr(self.cfg, "vocab_size")
+            and hasattr(self.cfg, "d_model")):
+            self.token_embed = nn.Embedding(self.cfg.vocab_size, self.cfg.d_model)
+        else:
+            self.token_embed = nn.Embedding(vocab_size, d_model)
         self.hook_embed = HookPoint()
         self.pad_id = 0
 
         # Position embeddings
-        self.pos_embed = nn.Parameter(torch.empty(self.num_pos, self.cfg.d_model))
+        self.pos_embed = nn.Parameter(torch.empty(
+            self.num_pos, self.cfg.d_model)
+            if hasattr(self.cfg, "d_model") else torch.empty(
+                self.num_pos, d_model)
+            )
+        
         self.hook_pos_embed = HookPoint()
 
         print(f"Using a cls token: {cls_token}")
         if cls_token:
-            self.cls_emb = nn.Parameter(torch.empty(self.cfg.d_model))
+            self.cls_emb = nn.Parameter(torch.empty(
+                self.cfg.d_model)
+                if hasattr(self.cfg, "d_model") 
+                else torch.empty(d_model)
+                )
             self.num_pos += 1
         else:
             self.cls_emb = None
@@ -73,9 +93,13 @@ class HookedTextTransformer(HookedTransformer):
 
         block = TransformerBlock
 
-        self.blocks = nn.ModuleList(
-            [block(self.cfg, block_index) for block_index in range(self.cfg.n_layers)]
-        )
+        # determine number of layers from cfg if present, else from argument
+        if hasattr(self.cfg, "n_layers"):       
+            num_layers = self.cfg.n_layers
+        else:
+            num_layers = n_layers
+
+        self.blocks = nn.ModuleList([block(self.cfg, block_index) for block_index in range(num_layers)])
         if self.cfg.normalization_type == "LN":
             self.ln_final = LayerNorm(self.cfg)
         elif self.cfg.normalization_type == "LNPre":

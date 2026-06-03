@@ -4,36 +4,39 @@ import torch
 from jaxtyping import Float
 from vit_prisma.configs import HookedViTConfig
 import einops
-
+import warnings
 class PatchEmbedding(nn.Module):
 
-    def __init__(self, config, logger=None,n_channels:int = 3, d_model:int = 768,kernel_size:int = 16, stride:int = 16):
+    def __init__(self, config, logger=None,in_channels:int = 3,out_channels:int=2,kernel_size:int = 16, stride:int = 16):
         super().__init__()
         self.logger = logger
         self.config = config
-        self.n_channels = n_channels
-        self.d_model = d_model
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         self.kernel_size = kernel_size
         self.stride = stride
 
-        if hasattr(self.config, "n_channels") and hasattr(self.config, "d_model") and hasattr(self.config, "patch_size"):
+        if hasattr(self.config, "in_channels") and hasattr(self.config, "out_channels") and hasattr(self.config, "patch_size"):
+            
             self.proj = nn.Conv2d(
-                self.config.n_channels, 
-                self.config.d_model, 
+                self.config.in_channels, 
+                self.config.out_channels, 
                 kernel_size=self.config.patch_size, 
                 stride=self.config.patch_size, 
                 bias=True
             )
-        elif all(param is not None for param in [n_channels, d_model, kernel_size, stride]):
+        elif all(param is not None for param in [in_channels, out_channels, kernel_size, stride]):
+            warnings.warn("Using configuration parameters for PatchEmbedding projection layer. Ensure that n_channels, out_channels, and patch_size are correctly specified in the configuration.")
+            
             self.proj = nn.Conv2d(
-            n_channels=self.n_channels, 
-            d_model=self.d_model,
-            kernel_size= self.kernel_size,
-            stride=self.stride,
-            bias=True,
-        )
+                in_channels=self.in_channels, 
+                out_channels=self.out_channels,
+                kernel_size=self.kernel_size,
+                stride=self.stride,
+                bias=True
+            )
         else:
-            raise ValueError("PatchEmbedding projection layer not initialized due to missing configuration parameters. Please ensure n_channels, d_model, and patch_size are specified in the configuration.")
+            raise ValueError("PatchEmbedding projection layer not initialized due to missing configuration parameters. Please ensure n_channels, out_channels, and patch_size are specified in the configuration.")
     
     def _log(self, stage, tensor):
         if self.logger:
@@ -51,14 +54,14 @@ class PatchEmbedding(nn.Module):
 # Used for videos, 3 dimensional spacetime patches 
 class TubeletEmbedding(nn.Module):
 
-    def __init__(self, cfg:HookedViTConfig, model_name:str, tublet_size :list = None, n_channels:int = 3, d_model:int = 768):
+    def __init__(self, cfg:HookedViTConfig, model_name:str, tubelet_size :list = None, in_channels:int = 3, out_channels:int = 2):
         super().__init__()
         self.cfg = cfg
         self.proj = None
         self.model_name = model_name
-        self.tublet_size = tublet_size
-        self.n_channels = n_channels
-        self.d_model = d_model
+        self.tubelet_size = tubelet_size
+        self.in_channels = in_channels
+        self.out_channels = out_channels
 
         if (hasattr(self.cfg, "video_tubelet_depth") 
             and hasattr(self.cfg, "patch_size")
@@ -66,9 +69,9 @@ class TubeletEmbedding(nn.Module):
             
             tubelet_size = [self.cfg.video_tubelet_depth, self.cfg.patch_size, self.cfg.patch_size]
 
-        elif tublet_size is not None:
+        elif self.tubelet_size is None:
             
-            logging.warning("TubeletEmbedding projection layer not initialized due to missing configuration parameters.")
+            warnings.warn("TubeletEmbedding projection layer not initialized due to missing configuration parameters.")
             tubelet_size_2 = ["VideoMAEv2-Base","VideoMAEv2-Large","vjepa","vjepa-large","vivit-large","vivit-huge"]
             if any(name in model_name for name in tubelet_size_2):
                 tubelet_size = [2, 16, 16]  # Default tubelet size for these models
@@ -86,9 +89,10 @@ class TubeletEmbedding(nn.Module):
                 bias=True
             )
         else:
+            warnings.warn("TubeletEmbedding projection layer initialized with default in_channels and out_channels. Ensure that n_channels and d_model are correctly specified in the configuration for optimal performance.")
             self.proj = nn.Conv3d(
-                n_channels=self.n_channels, 
-                d_model=self.d_model,
+                in_channels=self.in_channels,
+                out_channels=self.out_channels,
                 kernel_size=tubelet_size,
                 stride=tubelet_size,
                 bias=True,

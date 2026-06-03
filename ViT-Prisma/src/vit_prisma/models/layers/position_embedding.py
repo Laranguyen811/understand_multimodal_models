@@ -8,6 +8,7 @@ from vit_prisma.configs.HookedViTConfig import HookedViTConfig
 from typing import Dict, Optional, Tuple, Union
 
 from jaxtyping import Float, Int
+import warnings
 
 class PosEmbedding(nn.Module):
 
@@ -20,14 +21,23 @@ class PosEmbedding(nn.Module):
         self.cfg = cfg
 
         num_patches = (self.cfg.image_size // self.cfg.patch_size)**2
-        if self.cfg.is_video_transformer:
-            num_patches = num_patches*(self.cfg.video_num_frames//self.cfg.video_tubelet_depth)
-            
-        token_length = num_patches + 1 if self.cfg.use_cls_token else num_patches
 
-        self.W_pos = nn.Parameter(
-            torch.empty(token_length, self.cfg.d_model, dtype=self.cfg.dtype)
-        )
+        if hasattr(self.cfg, 'is_video_transformer') and self.cfg.is_video_transformer:
+            num_patches = num_patches*(self.cfg.video_num_frames//self.cfg.video_tubelet_depth)
+        else:
+            warnings.warn("is_video_transformer not found in config, defaulting to image transformer settings for positional embedding.")
+            num_patches = num_patches
+        token_length = num_patches + 1 if self.cfg.use_cls_token else num_patches
+        
+        if hasattr(self.cfg, 'd_model') and hasattr(self.cfg, 'dtype'):
+            self.W_pos = nn.Parameter(
+                torch.empty(token_length, self.cfg.d_model, dtype=self.cfg.dtype)
+            )
+        else:
+            warnings.warn("d_model or dtype not found in config, defaulting to float32 and d_model=768 for positional embedding.")
+            self.W_pos = nn.Parameter(
+                torch.empty(token_length, 768, dtype=torch.float32)
+            )
     
     def forward(
             self,

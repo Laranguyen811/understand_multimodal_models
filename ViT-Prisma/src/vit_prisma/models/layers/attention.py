@@ -26,6 +26,10 @@ class Attention(nn.Module):
             self,
             cfg: Union[Dict, HookedViTConfig],
             layer_id: Optional[int] = None,
+            n_heads: Optional[int] = 8,
+            d_model: Optional[int] = 512,
+            d_head: Optional[int] = 64,
+            dtype: Optional[torch.dtype] = torch.float32,
     ):
         super().__init__()
         if isinstance(cfg, Dict):
@@ -34,51 +38,112 @@ class Attention(nn.Module):
         self.cfg = cfg
 
         # Initialize parameters
-        self.W_Q = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads,
-                self.cfg.d_model,
-                self.cfg.d_head,
-                dtype = self.cfg.dtype
-            )
-        )
-        self.W_K = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads,
-                self.cfg.d_model,
-                self.cfg.d_head,
-                dtype = self.cfg.dtype
-            )
-        )
-        self.W_V = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads,
-                self.cfg.d_model,
-                self.cfg.d_head,
-                dtype = self.cfg.dtype
-            )
-        )
-        self.W_O = nn.Parameter(
-            torch.empty(
-                self.cfg.n_heads,
-                self.cfg.d_head,
-                self.cfg.d_model,
-                dtype = self.cfg.dtype
-            )
-        )
+        if ((hasattr(self.cfg,'n_heads') 
+            and self.cfg.n_heads is not None) and
+            (hasattr(self.cfg,'d_model') 
+             and self.cfg.d_model is not None) and
+            (hasattr(self.cfg,'d_head')
+                and self.cfg.d_head is not None)
+                ):
 
-        # Initialize biases
-        self.b_Q = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
-        )
-        self.b_K = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
-        )
-        self.b_V = nn.Parameter(
-            torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
-        )
-        self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
+            self.W_Q = nn.Parameter(
+                torch.empty(
+                    self.cfg.n_heads,
+                    self.cfg.d_model,
+                    self.cfg.d_head,
+                    dtype = self.cfg.dtype
+                )
+            )
+            self.W_K = nn.Parameter(
+                torch.empty(
+                    self.cfg.n_heads,
+                    self.cfg.d_model,
+                    self.cfg.d_head,
+                    dtype = self.cfg.dtype
+                )
+            )
+            self.W_V = nn.Parameter(
+                torch.empty(
+                    self.cfg.n_heads,
+                    self.cfg.d_model,
+                    self.cfg.d_head,
+                    dtype = self.cfg.dtype
+                )
+            )
+            self.W_O = nn.Parameter(
+                torch.empty(
+                    self.cfg.n_heads,
+                    self.cfg.d_head,
+                    self.cfg.d_model,
+                    dtype = self.cfg.dtype
+                )
+            )
 
+            # Initialize biases
+            self.b_Q = nn.Parameter(
+                torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
+            )
+            self.b_K = nn.Parameter(
+                torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
+            )
+            self.b_V = nn.Parameter(
+                torch.zeros(self.cfg.n_heads, self.cfg.d_head, dtype=self.cfg.dtype)
+            )
+            self.b_O = nn.Parameter(torch.zeros(self.cfg.d_model, dtype=self.cfg.dtype))
+        else:
+            # If the necessary dimensions are not in the config, initialise using the provided dimensions.
+            assert (n_heads is not None 
+                    and d_model is not None 
+                    and d_head is not None
+                    and dtype is not None,
+            "If n_heads, "
+            "d_model and d_head are not in the config, "
+            "they must be provided as arguments to the constructor.")
+
+            self.W_Q = nn.Parameter(
+                torch.empty(
+                    n_heads,
+                    d_model,
+                    d_head,
+                    dtype = dtype
+                )
+            )
+            self.W_K = nn.Parameter(
+                torch.empty(
+                    n_heads,
+                    d_model,
+                    d_head,
+                    dtype = dtype
+                )
+            )
+            self.W_V = nn.Parameter(
+                torch.empty(
+                    n_heads,
+                    d_model,
+                    d_head,
+                    dtype = dtype
+                )
+            )
+            self.W_O = nn.Parameter(
+                torch.empty(
+                    n_heads,
+                    d_head,
+                    d_model,
+                    dtype = dtype
+                )
+            )   
+            # Initialize biases
+            self.b_Q = nn.Parameter(
+                torch.zeros(n_heads, d_head, dtype=dtype)
+            )
+            self.b_K = nn.Parameter(
+                torch.zeros(n_heads, d_head, dtype=dtype)
+            )
+            self.b_V = nn.Parameter(
+                torch.zeros(n_heads, d_head, dtype=dtype)
+            )
+            self.b_O = nn.Parameter(
+                torch.zeros(d_model, dtype=dtype))
 
         # Add hook points
         self.hook_k = HookPoint()  # [batch, pos, head_index, d_head]
@@ -93,8 +158,9 @@ class Attention(nn.Module):
 
         # Note to Sonia: check this.
         # attn_scale is a constant that we divide the attention scores by pre-softmax. I'm not entirely sure why it matters, but it's probably a mix of softmax not being scale invariant and numerical stability?
-        if self.cfg.use_attn_scale:
-            self.attn_scale = np.sqrt(self.cfg.d_head)
+        if (hasattr(self.cfg,'use_attn_scale')
+            and self.cfg.use_attn_scale):
+                self.attn_scale = np.sqrt(self.cfg.d_head)
         else:
             self.attn_scale = 1.0
 
@@ -138,6 +204,7 @@ class Attention(nn.Module):
                 Float[torch.Tensor, "batch pos head_index d_model"],
             ],
             attention_mask: Optional[Float[torch.Tensor, "batch pos pos"]] = None,
+            dtype: torch.dtype = torch.float32,
     ) -> Float[torch.Tensor, "batch pos d_model"]:
         
         q, k, v  = self.calculate_qkv_matrices(query_input, key_input, value_input)
@@ -149,25 +216,18 @@ class Attention(nn.Module):
         pattern = torch.where(torch.isnan(pattern), torch.zeros_like(pattern), pattern)
         pattern = self.hook_pattern(pattern)
 
-        pattern = pattern.to(self.cfg.dtype)
+        if (hasattr(self.cfg,'dtype') 
+            and self.cfg.dtype is not None):
+            pattern = pattern.to(self.cfg.dtype)
+        else:
+            pattern = pattern.to(dtype)
+
         z = self.calculate_z_scores(v, pattern)
 
-        if not self.cfg.use_attn_result:
-            out = (
-                (
-                    einsum(
-                        "batch pos head_index d_head, \
-                        head_index d_head d_model -> \
-                        batch pos d_model",
-                        z,
-                        self.W_O,
-                    )
-                )
-                + self.b_O
-            )
-        else: 
-            # Explicitly calculate the attention result so it can be accessed by a hook.
-            # Off by default to not eat through GPU memory.
+        if (hasattr(self.cfg, 'use_attn_result') 
+            and self.cfg.use_attn_result):
+    # Explicitly calculate the attention result so it can be accessed by a hook.
+    # Off by default to not eat through GPU memory.
             result = self.hook_result(
                 einsum(
                     "batch pos head_index d_head, \
@@ -179,6 +239,19 @@ class Attention(nn.Module):
             )
             out = (
                 einops.reduce(result, "batch pos head_index d_model -> batch pos d_model", "sum")
+                + self.b_O
+            )
+        else:
+            out = (
+                (
+                    einsum(
+                        "batch pos head_index d_head, \
+                        head_index d_head d_model -> \
+                        batch pos d_model",
+                        z,
+                        self.W_O,
+                    )
+                )
                 + self.b_O
             )
         return out
@@ -196,7 +269,9 @@ class Attention(nn.Module):
             value_input: Union[
                 Float[torch.Tensor, "batch pos d_model"],
                 Float[torch.Tensor, "batch pos head_index d_model"],
-            ]
+            ],
+            use_split_qkv_input: Optional[bool] = True,
+            use_attn_in: Optional[bool] = True,
     ) -> Tuple[
         Float[torch.Tensor, "batch pos head_index d_head"],
         Float[torch.Tensor, "batch pos head_index d_head"],
@@ -208,10 +283,19 @@ class Attention(nn.Module):
         Returns a tuple of (Q, K, V) matrices, each of shape [batch, pos, head_index, d_head]
         """
 
-        if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
-            qkv_einops_string = "batch pos head_index d_model"
+        if (hasattr(self.cfg,'use_split_qkv_input')
+            and hasattr(self.cfg,'use_attn_in')):
+            if self.cfg.use_split_qkv_input or self.cfg.use_attn_in:
+                qkv_einops_string = "batch pos head_index d_model"
+            else:
+                qkv_einops_string = "batch pos d_model"
         else:
-            qkv_einops_string = "batch pos d_model"
+            if use_split_qkv_input is None or use_attn_in is None:
+                raise ValueError("If use_split_qkv_input or use_attn_in are not in the config, they must be provided as arguments to the constructor.")
+            if use_split_qkv_input or use_attn_in:
+                qkv_einops_string = "batch pos head_index d_model"
+            else:
+                qkv_einops_string = "batch pos d_model"
 
 
         q = self.hook_q(
