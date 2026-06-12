@@ -601,6 +601,55 @@ VJEPA_CONFIGS = {
         "return_type": "pre_logits",
         "eps": 1e-6,
     },
+    "facebook/vjepa2-vitl-fpc64-256":{
+        "use_cls_token": False,
+        "layer_norm_pre": False,
+        "return_type": "pre_logits",
+        "eps": 1e-6,
+    },
+    "facebook/vjepa2-vith-fpc64-256":{
+        "use_cls_token": False,
+        "layer_norm_pre": False,
+        "return_type": "pre_logits",
+        "eps": 1e-6,
+    },
+    "facebook/vjepa2-vitg-fpc64-256":{
+        "use_cls_token": False,
+        "layer_norm_pre": False,
+        "return_type": "pre_logits",
+        "eps": 1e-6,
+    },
+    "facebook/vjepa2-vith-fpc64-256":{
+        "use_cls_token": False,
+        "layer_norm_pre": False,
+        "return_type": "pre_logits",
+        "eps": 1e-6,
+    },
+    "facebook/vjepa2-vitg-fpc64-384-ssv2":{
+        "use_cls_token": False,
+        "layer_norm_pre": False,
+        "return_type": "pre_logits",
+        "eps": 1e-6,
+    },
+    "facebook/vjepa2-vitl-fpc16-256-ssv2":{
+        "use_cls_token": False,
+        "layer_norm_pre": False,
+        "return_type": "pre_logits",
+        "eps": 1e-6,
+    },
+    "facebook/vjepa2-vitg-fpc32-384-diving48":{
+        "use_cls_token": False,
+        "layer_norm_pre": False,
+        "return_type": "pre_logits",
+        "eps": 1e-6,
+    },
+    "facebook/vjepa2-vitl-fpc32-256-diving48":{
+        "use_cls_token": False,
+        "layer_norm_pre": False,
+        "return_type": "pre_logits",
+        "eps": 1e-6,
+    },
+    
     
 }
 

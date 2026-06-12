@@ -27,11 +27,18 @@ class PosEmbedding(nn.Module):
         else:
             warnings.warn("is_video_transformer not found in config, defaulting to image transformer settings for positional embedding.")
             num_patches = num_patches
-        token_length = num_patches + 1 if self.cfg.use_cls_token else num_patches
+        if (hasattr(self.cfg, 'use_cls_token') 
+            and self.cfg.use_cls_token):
+            token_length = num_patches + 1
+        else:            
+            token_length = num_patches
         
-        if hasattr(self.cfg, 'd_model') and hasattr(self.cfg, 'dtype'):
+        if (hasattr(self.cfg, 'd_model') 
+            and hasattr(self.cfg, 'dtype')):
             self.W_pos = nn.Parameter(
-                torch.empty(token_length, self.cfg.d_model, dtype=self.cfg.dtype)
+                torch.empty(token_length, 
+                            self.cfg.d_model, 
+                            dtype=self.cfg.dtype)
             )
         else:
             warnings.warn("d_model or dtype not found in config, defaulting to float32 and d_model=768 for positional embedding.")
@@ -44,6 +51,7 @@ class PosEmbedding(nn.Module):
             tokens: Int[torch.Tensor, "batch pos"],
     ):
         pos_embed = self.W_pos
-        batch_pos_embed = einops.repeat(pos_embed, "pos d_model -> batch pos d_model", batch=tokens.size(0))
+        batch_pos_embed = einops.repeat(pos_embed, "pos d_model -> batch pos d_model", 
+                                        batch=tokens.size(0))
         return batch_pos_embed
 

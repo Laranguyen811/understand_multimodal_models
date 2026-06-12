@@ -17,7 +17,10 @@ class LayerNormPre(nn.Module):
         if isinstance(cfg, Dict):
             cfg = HookedViTConfig.from_dict(cfg)
         self.cfg = cfg
-        self.eps = self.cfg.eps
+        if hasattr(self.cfg, "eps"):
+            self.eps = self.cfg.eps
+        else:
+            self.eps = 1e-5
 
         # Adds a hook point for the normalisation scale factor
         self.hook_scale = HookPoint()  # [batch, pos]

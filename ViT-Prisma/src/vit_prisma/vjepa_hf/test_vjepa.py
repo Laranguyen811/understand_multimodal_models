@@ -56,7 +56,7 @@ def run_imagenet():
 
         
 # 1. LOAD HOOKED MODEL
-og_model_name = "vjepa_v1_vit_huge"
+og_model_name = "facebook/vjepa2-vitl-fpc64-256"
 print("Loading hooked model")
 hooked_model = HookedViT.from_pretrained(og_model_name, is_timm=False, is_clip=False, fold_ln=False) # in future, do all models
 print("hooked model config", hooked_model.cfg)

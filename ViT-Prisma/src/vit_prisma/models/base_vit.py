@@ -86,8 +86,12 @@ class HookedViT(HookedTransformer):
         self.cfg = cfg
 
         # ClS token
-        self.cls_token = nn.Parameter(torch.randn(1, 1, self.cfg.d_model)) if self.cfg.use_cls_token else None
-        if not hasattr(self.cfg, 'd_model'):
+        if (hasattr(self.cfg, "use_cls_token")
+            and self.cfg.use_cls_token
+            and hasattr(self.cfg, "d_model")):
+            self.cls_token = nn.Parameter(torch.randn(1, 1, self.cfg.d_model))
+
+        else:
             self.cls_token = nn.Parameter(torch.randn(1, 1, 512))
             logging.warning("cfg does not have d_model attribute, defaulting to 512 for cls token initialization")
 
