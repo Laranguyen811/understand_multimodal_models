@@ -81,4 +81,99 @@ OPENAI_IMAGENET_TEMPLATES = (
     lambda c: f'a tattoo of the {c}.',
 )
 
+GPT_COCO_SEMANTIC_DESCRIPTION_TEMPLATE = """
+Role: You are a helpful assistant who always answers truthfully.
 
+# Goal
+Based on the image description, provide a detailed semantic description of the scene, including:
+- The main objects present and their attributes (e.g., color, size, texture)
+- The spatial relationships between the objects
+- The overall scene context (e.g., indoor/outdoor, lighting conditions)
+
+# Output
+Format your response as a JSON object with the structure:
+{
+  \"objects\": [
+    {
+      \"category\": \"object_category\",
+      \"attributes\": {
+        \"color\": \"color_value\",
+        \"size\": \"size_value\",
+        \"texture\": \"texture_value\"
+      }
+    },
+    ...
+  ],
+  \"relationships\": [
+    {
+      \"subject\": \"object_category_1\",
+      \"predicate\": \"relationship\",
+      \"object\": \"object_category_2\"
+    },
+    ...
+  ],
+  \"scene_context\": {
+    \"setting\": \"indoor/outdoor\",
+    \"lighting\": \"lighting_conditions\"
+  }
+}
+
+"""
+GPT_COCO_LOCALISATION_TEMPLATE = """
+
+Role: You are a helpful assistant who always answers truthfully.
+
+# Goal
+Analyze this COCO image: 
+    Image description: {image_description}
+Object categories detected: {categories}
+For each object category, provide the following:
+- 2D bounding box coordinates (x_min, y_min, x_max, y_max)
+- 3D bounding box parameters (if available): (x_center, y_center, z_center, width, height, depth)
+- Confidence score for the detection
+
+# Output
+Format your response as a JSON object with the structure:
+{
+  \"objects\": [
+    {
+      \"category\": \"object_category\",
+      \"bbox_2d\": [x_min, y_min, x_max, y_max],
+      \"bbox_3d\": [x_center, y_center, z_center, width, height, depth],
+      \"confidence\": confidence_score
+    },
+    ...
+  ]
+}
+
+"""
+GPT_COCO_RECOGNITION_TEMPLATE = """
+Role: You are a helpful assistant who always answers truthfully.
+
+# Goal
+Analyze this COCO image: 
+    Image description: {image_description}
+Identify the main objects present in the image and describe their attributes (e.g., color, size, texture).
+Also, describe the overall scene attributes (e.g., indoor/outdoor, lighting conditions).
+
+# Output
+Format your response as a JSON object with the structure:
+  {
+  \"objects\":[
+    {
+      \"category\":\"object_category\",
+      \"attributes\": {
+      \"colour\":\"colour_value\",
+      \"size\":\"size_value\",
+      \"texture\":\"texture_value\"
+    }
+  },
+  ...
+],
+\"scene_attributes\": {
+\"settings\": \"indoor/outdoor\",
+\"lighting\":\"lighting_conditions\"
+}
+}
+
+"""

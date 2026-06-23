@@ -88,7 +88,7 @@ ANTHROPIC_CLAUDE_IMAGENET_TEMPLATES = (
 client = Anthropic()
 
 # Template for a sematic description of the scene
-COCO_SEMANTIC_DESCRIPTION_TEMPLATE = """You are analyzing an image from the COCO dataset.
+CLAUDE_COCO_SEMANTIC_DESCRIPTION_TEMPLATE = """You are analyzing an image from the COCO dataset.
 Image description: {image_description}
 Based on the image description, provide a detailed semantic description of the scene, including:
 - The main objects present and their attributes (e.g., color, size, texture)
@@ -123,7 +123,7 @@ Format your response as a JSON object with the structure:
 """
 
 # Template for object detection questions
-COCO_DETECTION_TEMPLATE = """
+CLAUDE_COCO_DETECTION_TEMPLATE = """
 Given this COCO image data:
 - Image ID: {image_id}
 - Main objects: {objects}
@@ -135,7 +135,7 @@ Provide a detailed answer based on the image information provided.
 """
 
 # Template for scene understanding
-COCO_SCENE_TEMPLATE = """
+CLAUDE_COCO_SCENE_TEMPLATE = """
 Analyze this COCO image:
 
 Objects present: {object_list}
@@ -146,7 +146,7 @@ Describe the scene's context, what's happening, and why these objects are arrang
 """
 
 # Template for localising 2D and 3D objects in the image
-COCO_LOCALISATION_TEMPLATE = """
+CLAUDE_COCO_LOCALISATION_TEMPLATE = """
 You are analyzing an image from the COCO dataset.
 Image description: {image_description}
 Object categories detected: {categories}
@@ -170,7 +170,7 @@ Format your response as a JSON object with the structure:
 """
 
 # Template for recognising what objects are present
-COCO_RECOGNITION_TEMPLATE = """You are analyzing an image from the COCO dataset.
+CLAUDE_COCO_RECOGNITION_TEMPLATE = """You are analyzing an image from the COCO dataset.
 Image description: {image_description}
 Based on the image description, identify the main objects present in the image.
 List the objects in order of prominence, starting with the most prominent one.
@@ -178,7 +178,7 @@ Format your response as a JSON array of object categories, like this:
 ["object_category_1", "object_category_2", ...]
 """
 # Template for characterising objects' and scene's attributes
-COCO_CHARACTERISATION_TEMPLATE = """You are analyzing an image from the COCO dataset.
+CLAUDE_COCO_CHARACTERISATION_TEMPLATE = """You are analyzing an image from the COCO dataset.
 Image description: {image_description}
 Identify the main objects present in the image and describe their attributes (e.g., color, size, texture).
 Also, describe the overall scene attributes (e.g., indoor/outdoor, lighting conditions).

@@ -1,17 +1,17 @@
 facebook/vjepa2-vitl-fpc64-256: 
-  loc: "./my_local_models/vjepa2-vitl-fpc64-256/"
+  loc: "./my_local_models/facebook/vjepa2-vitl-fpc64-256/"
 facebook/vjepa2-vith-fpc64-256: 
-  loc: "./my_local_models/vjepa2-vith-fpc64-256/"
+  loc: "./my_local_models/facebook/vjepa2-vith-fpc64-256/"
 facebook/vjepa2-vitg-fpc64-256: 
-  loc: "./my_local_models/vjepa2-vitg-fpc64-256/"
+  loc: "./my_local_models/facebook/vjepa2-vitg-fpc64-256/"
 facebook/vjepa2-vitg-fpc64-384: 
-  loc: "./my_local_models/vjepa2-vitg-fpc64-384/"
+  loc: "./my_local_models/facebook/vjepa2-vitg-fpc64-384/"
 facebook/vjepa2-vitg-fpc64-384-ssv2:
-  loc: "./my_local_models/vjepa2-vitg-fpc64-384-ssv2/"
+  loc: "./my_local_models/facebook/vjepa2-vitg-fpc64-384-ssv2/"
 facebook/vjepa2-vitl-fpc16-256-ssv2:
-  loc: "./my_local_models/vjepa2-vitl-fpc16-256-ssv2/"
+  loc: "./my_local_models/facebook/vjepa2-vitl-fpc16-256-ssv2/"
 facebook/vjepa2-vitg-fpc32-384-diving48:
-  loc: "./my_local_models/vjepa2-vitg-fpc32-384-diving48/"
+  loc: "./my_local_models/facebook/vjepa2-vitg-fpc32-384-diving48/"
 facebook/vjepa2-vitl-fpc32-256-diving48:
-  loc: "./my_local_models/vjepa2-vitl-fpc32-256-diving48/"
+  loc: "./my_local_models/facebook/vjepa2-vitl-fpc32-256-diving48/"
 
