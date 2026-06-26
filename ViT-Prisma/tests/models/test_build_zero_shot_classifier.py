@@ -15,6 +15,9 @@ templates_dir = os.getenv("templates_directory")
 templates_list = get_all_templates(templates_dir)
 
 class TestZeroShotClassifier:
+    """
+    Test suite for zero_shot_classifier function.
+    """
     def test_zero_shot_classifier():
         classifier = zero_shot_classifier("openai/clip-vit-large-patch14", tokenizer=AutoTokenizer.from_pretrained("openai/clip-vit-large-patch14"), classnames=["cat", "dog"], templates=OPENAI_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)
         print(classifier)
@@ -61,8 +64,10 @@ class TestZeroShotClassifier:
         with pytest.raises(ValueError):
             zero_shot_classifier("claude/claude-2", tokenizer=AutoTokenizer.from_pretrained("claude/claude-2"), classnames=["horse","person"], templates=ANTHROPIC_CLAUDE_IMAGENET_TEMPLATES, device="cpu", amp=invalid_amp, use_format=False)
         print(ValueError, f"Expected ValueError for invalid amp setting: {invalid_amp}")
+
 # TODO: Add more tests with different datasets, models and prompt templates to ensure robustness and versatility of the zero-shot classifier across various scenarios.
 class TestBuildZeroShotClassifier:
+
     def test_build_zero_shot_classifier_invalid_model():
         invalid_model_name = "invalid/model-name"
         with pytest.raises(ValueError):
@@ -141,6 +146,7 @@ class TestBuildZeroShotClassifier:
                 print(ValueError, f"Expected ValueError for invalid use_format setting: {invalid_use_format} with model: {model_name} and template: {template}")
 
 
+# This test suite below is AI-generated
 class TestCleanModelName:
     """Test suite for clean_model_name function."""
 

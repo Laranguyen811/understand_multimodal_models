@@ -24,7 +24,7 @@ from vit_prisma.models.model_config_registry import (
     MODEL_CATEGORIES,
     MODEL_CONFIGS,
     ModelCategory,
-    TEXT_SUPPORTED_MODELS,
+    TEXT_ONLY_SUPPORTED_MODELS,
 )
 
 # Import conversion functions for reference only - will be loaded on demand
