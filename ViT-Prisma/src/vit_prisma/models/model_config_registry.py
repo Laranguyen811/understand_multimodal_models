@@ -18,9 +18,9 @@ class ModelCategory(Enum):
     DINO = "dino"
     VIVIT = "vivit"
     VJEPA = "vjepa"
-    QWEN = "qwen"
+    # QWEN = "qwen"
     LLAMA = "llama"
-    LLaVa = "llava"
+    # LLaVa = "llava"
 
 
 # ===============================
@@ -657,7 +657,7 @@ VJEPA_CONFIGS = {
 }
 
 # LLaVa Vision Configs
-LLAVA_VISION_CONFIGS = {**CLIP_CONFIGS}
+# LLAVA_VISION_CONFIGS = {**CLIP_CONFIGS}
 
 
 # ===============================
@@ -756,60 +756,60 @@ LLAMA_TEXT_CONFIGS = {
 
     }
 }
-QWEN_TEXT_CONFIGS = {
-    "Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_100":{
-        "model_type": "topk_sae",
-  "hf_repo_id": "Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_100",
-  "base_model": "Qwen/Qwen3-8B-Base",
-  "d_model": 4096,
-  "d_sae": 65536,
-  "k": 100,
-  "num_layers": 36,
-  "layers": [
-    0,
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22,
-    23,
-    24,
-    25,
-    26,
-    27,
-    28,
-    29,
-    30,
-    31,
-    32,
-    33,
-    34,
-    35
-  ],
-  "hook_point": "resid_post",
-  "dtype": "float32"
-    }
-}
+#QWEN_TEXT_CONFIGS = {
+#    "Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_100":{
+#        "model_type": "topk_sae",
+#  "hf_repo_id": "Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_100",
+#  "base_model": "Qwen/Qwen3-8B-Base",
+#  "d_model": 4096,
+#  "d_sae": 65536,
+#  "k": 100,
+#  "num_layers": 36,
+#  "layers": [
+#    0,
+#    1,
+#    2,
+#    3,
+#    4,
+#    5,
+#    6,
+#    7,
+#    8,
+#    9,
+#    10,
+#   11,
+#    12,
+#    13,
+#    14,
+#    15,
+#    16,
+#    17,
+#    18,
+#    19,
+#    20,
+#    21,
+#    22,
+#    23,
+#    24,
+#    25,
+#    26,
+#    27,
+#    28,
+#    29,
+#    30,
+#    31,
+#    32,
+#    33,
+#    34,
+#    35
+#  ],
+#  "hook_point": "resid_post",
+#  "dtype": "float32"
+#    }
+#}
 
 # LLaVa Text Configurations
-LLAVA_TEXT_CONFIGS = {**LLAMA_TEXT_CONFIGS}
+# LLAVA_TEXT_CONFIGS = {**LLAMA_TEXT_CONFIGS}
 # ===============================
 # Speech Model Configurations
 # ===============================
@@ -825,7 +825,7 @@ LLAVA_TEXT_CONFIGS = {**LLAMA_TEXT_CONFIGS}
 # ===============================
 # Multimodal Model Configurations
 # ===============================
-LLAVA_CONFIGS = {**LLAVA_VISION_CONFIGS, **LLAVA_TEXT_CONFIGS}
+# LLAVA_CONFIGS = {**LLAVA_VISION_CONFIGS, **LLAVA_TEXT_CONFIGS}
 
 
 # ===============================
@@ -841,9 +841,9 @@ MODEL_CATEGORIES = {
     **{name: ModelCategory.DINO for name in DINO_CONFIGS},
     **{name: ModelCategory.VIVIT for name in VIVIT_CONFIGS},
     **{name: ModelCategory.VJEPA for name in VJEPA_CONFIGS},
-    **{name: ModelCategory.QWEN for name in QWEN_TEXT_CONFIGS},
+ #   **{name: ModelCategory.QWEN for name in QWEN_TEXT_CONFIGS},
     **{name: ModelCategory.LLAMA for name in LLAMA_TEXT_CONFIGS},
-    **{name: ModelCategory.LLaVa for name in LLAVA_CONFIGS},
+#   **{name: ModelCategory.LLaVa for name in LLAVA_CONFIGS},
 }
 
 # Combined configuration dictionary
@@ -862,20 +862,22 @@ MODEL_CONFIGS = {
     ModelType.TEXT: {
         **OPEN_CLIP_TEXT_CONFIGS,
         **LLAMA_TEXT_CONFIGS,
-        **QWEN_TEXT_CONFIGS,
+       # **QWEN_TEXT_CONFIGS,
     },
 
     # Multimodal configurations
-    ModelType.MULTIMODAL: {
-        **LLAVA_CONFIGS,
-    }
+    #ModelType.MULTIMODAL: {
+    #     **LLAVA_CONFIGS,
+    #}
 }
 
 # Get the list of models that support text modality only
-TEXT_ONLY_SUPPORTED_MODELS = list(MODEL_CONFIGS[ModelType.TEXT].keys())
+TEXT_ONLY_SUPPORTED_MODELS = set(MODEL_CONFIGS[ModelType.TEXT].keys())
+
 
 # Get the list of models supporting multimodalities
-MULTIMODALITY_SUPPORTED_MODELS = list(MODEL_CONFIGS[ModelType.MULTIMODAL].keys())
+#MULTIMODALITY_SUPPORTED_MODELS = list(MODEL_CONFIGS[ModelType.MULTIMODAL].keys())
 
 # Get the list of models supporting visual modality only
-VISION_ONLY_SUPPORTED_MODELS = list(MODEL_CONFIGS[ModelType.VISION].keys())
+#VISION_ONLY_SUPPORTED_MODELS = list(MODEL_CONFIGS[ModelType.VISION].keys())
+

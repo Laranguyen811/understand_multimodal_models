@@ -51,7 +51,7 @@ class TestZeroShotClassifier:
             print(f"Testing zero-shot classifier for model: {model_name}")
             classifier = zero_shot_classifier(model_name, tokenizer=AutoTokenizer.from_pretrained(model_name), classnames=["cat", "dog"], templates=OPENAI_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)
             print(classifier)
-            assert classifier is not None
+            assert classifier is not None, "Classifier is None. Please sure the correct models."
 
     def test_zero_shot_classifier_invalid_device():
         invalid_device = "invalid_device"

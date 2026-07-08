@@ -186,7 +186,7 @@ def load_config(
         
 
     if (model_type == ModelType.TEXT 
-    and model_name not in TEXT_SUPPORTED_MODELS):
+    and model_name not in TEXT_ONLY_SUPPORTED_MODELS):
         raise ValueError(f"Model '{model_name}' does not support text modality")
 
     category = MODEL_CATEGORIES[model_name]
