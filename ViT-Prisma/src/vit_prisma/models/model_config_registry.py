@@ -19,7 +19,7 @@ class ModelCategory(Enum):
     VIVIT = "vivit"
     VJEPA = "vjepa"
     # QWEN = "qwen"
-    LLAMA = "llama"
+    #LLAMA = "llama"
     # LLaVa = "llava"
 
 
@@ -751,11 +751,11 @@ OPEN_CLIP_TEXT_CONFIGS = {
     },
 }
 
-LLAMA_TEXT_CONFIGS = {
-    "meta-llama/Llama-2-7b-hf":{
+#LLAMA_TEXT_CONFIGS = {
+#    "meta-llama/Llama-2-7b-hf":{
 
-    }
-}
+#    }
+#}
 #QWEN_TEXT_CONFIGS = {
 #    "Qwen/SAE-Res-Qwen3-8B-Base-W64K-L0_100":{
 #        "model_type": "topk_sae",
@@ -842,7 +842,7 @@ MODEL_CATEGORIES = {
     **{name: ModelCategory.VIVIT for name in VIVIT_CONFIGS},
     **{name: ModelCategory.VJEPA for name in VJEPA_CONFIGS},
  #   **{name: ModelCategory.QWEN for name in QWEN_TEXT_CONFIGS},
-    **{name: ModelCategory.LLAMA for name in LLAMA_TEXT_CONFIGS},
+ #   **{name: ModelCategory.LLAMA for name in LLAMA_TEXT_CONFIGS},
 #   **{name: ModelCategory.LLaVa for name in LLAVA_CONFIGS},
 }
 
@@ -861,7 +861,7 @@ MODEL_CONFIGS = {
     # Text configurations
     ModelType.TEXT: {
         **OPEN_CLIP_TEXT_CONFIGS,
-        **LLAMA_TEXT_CONFIGS,
+        # **LLAMA_TEXT_CONFIGS,
        # **QWEN_TEXT_CONFIGS,
     },
 

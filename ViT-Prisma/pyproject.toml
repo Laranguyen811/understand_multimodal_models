@@ -3,3 +3,5 @@ source =["ViT-Prisma"]
 
 [tool.pytest.ini_options]
 addopts = "--cov --cov-report=lcov:lcov.info --cov-report=term"
+
+ignore = ["understand_multimodal_models/understand_multimodal_models_env"]
