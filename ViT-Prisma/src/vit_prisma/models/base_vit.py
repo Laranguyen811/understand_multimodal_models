@@ -100,7 +100,10 @@ class HookedViT(HookedTransformer):
             if self.cfg.is_video_transformer:
                 logging.info("Using Tubelet Embedding for video transformer")
                 self.embed = TubeletEmbedding(self.cfg)
+            else:
+                self.embed = PatchEmbedding(self.cfg)
         else:
+            logging.warning("cfg does not have is_video_transformer attribute, defaulting to PatchEmbedding")
             self.embed = PatchEmbedding(self.cfg)
 
         self.hook_embed = HookPoint()
@@ -126,7 +129,11 @@ class HookedViT(HookedTransformer):
                     )
                 self.hook_ln_pre = HookPoint()
             else:
-                print("ln_pre not set")
+                logging.info("ln_pre not set")
+        else:
+            logging.warning("layer_norm_pre not found in config, skipping ln_pre.")
+            self.ln_pre = nn.Identity()
+            self.hook_ln_pre = HookPoint()
 
         # Blocks
         if hasattr(self.cfg, "use_bert_block"):
@@ -190,7 +197,12 @@ class HookedViT(HookedTransformer):
 
         batch_size = input.shape[0]
 
-        embed = self.hook_embed(self.embed(input))
+        if hasattr(self.cfg,"embed"):
+            embed = self.hook_embed(self.embed(input))
+        else:
+            logging.warning("cfg does not have embed attribute, defaulting to PatchEmbedding")
+            self.embed = PatchEmbedding(self.cfg)
+            embed = self.hook_embed(self.embed(input))  
 
         if hasattr(self.cfg, "use_cls_token"):
             if self.cfg.use_cls_token:
@@ -198,6 +210,8 @@ class HookedViT(HookedTransformer):
                     batch_size, -1, -1
                 )  # CLS token for each item in the batch
                 embed = torch.cat((cls_tokens, embed), dim=1)  # Add to embedding
+            else:
+                logging.info("Not using CLS token as per config")
         else:
             logging.warning("use_cls_token not found in config, not using CLS token.")
 
@@ -211,6 +225,8 @@ class HookedViT(HookedTransformer):
             if self.cfg.layer_norm_pre:
                 residual = self.ln_pre(residual)
                 residual = self.hook_ln_pre(residual)
+            else:
+                logging.info("ln_pre not set, skipping ln_pre.")
         else:
             logging.warning("layer_norm_pre not found in config, skipping ln_pre.")
             self.ln_pre = nn.Identity()
@@ -229,7 +245,7 @@ class HookedViT(HookedTransformer):
 
                 x = x.mean(dim=1)
                 print(self.cfg.return_type)
-        elif hasattr(self.cfg, "classification_type"): 
+
             if self.cfg.classification_type == "cls":  # CLS token
                 cls_token = x[:, 0]
                 if "dino-vitb" in self.cfg.model_name:
@@ -256,6 +272,10 @@ class HookedViT(HookedTransformer):
         if hasattr(self.cfg, "normalize_output"):
             if self.cfg.normalize_output:
                 x = F.normalize(x, dim=-1)
+            else:
+                x = x
+        else:
+            logging.warning("normalize_output not found in config, skipping normalization of output.")
 
         return x
 
@@ -263,6 +283,10 @@ class HookedViT(HookedTransformer):
         if hasattr(self.cfg, "use_cls_token"):
             if self.cfg.use_cls_token:
                 nn.init.normal_(self.cls_token, std=self.cfg.cls_std)
+            else:
+                logging.info("Not initializing cls_token as per config")
+        else:
+            logging.warning("use_cls_token not found in config, not initializing cls_token.")
         # nn.init.trunc_normal_(self.position_embedding, std=self.cfg.pos_std)
         if hasattr(self.cfg, "weight_type"):
             if self.cfg.weight_type == "he":
@@ -286,6 +310,12 @@ class HookedViT(HookedTransformer):
                         nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
                         if m.bias is not None:
                             nn.init.constant_(m.bias, 0)
+            else:
+                raise ValueError(f"Invalid weight_type: {self.cfg.weight_type}")
+        else:
+            # Need to look at the default initialisation
+            logging.warning("weight_type not found in config, skipping weight initialization.")
+            self.ln_pre = nn.Identity()
 
     def run_with_cache(
         self, *model_args, return_cache_object=True, remove_batch_dim=False, **kwargs

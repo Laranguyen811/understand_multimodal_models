@@ -109,7 +109,9 @@ def test_loading_kandinsky():
     )
 
     print("Getting original model outputs...")
-    all_outputs, layer_names = get_all_layer_outputs(original_model, random_input)
+    all_outputs, layer_names = get_all_layer_outputs(
+        original_model, 
+        random_input)
 
     print("Getting hooked model outputs...")
     final_output_hooked, cache = hooked_model.run_with_cache(random_input)

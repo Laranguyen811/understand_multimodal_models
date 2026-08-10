@@ -3,7 +3,9 @@ import os
 
 from vit_prisma.models.model_config_registry import MODEL_CATEGORIES
 import pytest
-from vit_prisma.models.build_zero_shot_classifier import zero_shot_classifier, build_zero_shot_classifier, clean_model_name
+from vit_prisma.models.build_zero_shot_classifier import (zero_shot_classifier, 
+                                                          build_zero_shot_classifier, 
+                                                          clean_model_name)
 from transformers import AutoTokenizer
 from vit_prisma.utils.templates.open_ai.openai_templates import OPENAI_IMAGENET_TEMPLATES
 from vit_prisma.utils.templates.anthropic.anthropic_templates import ANTHROPIC_CLAUDE_IMAGENET_TEMPLATES
@@ -19,32 +21,60 @@ class TestZeroShotClassifier:
     Test suite for zero_shot_classifier function.
     """
     def test_zero_shot_classifier():
-        classifier = zero_shot_classifier("openai/clip-vit-large-patch14", tokenizer=AutoTokenizer.from_pretrained("openai/clip-vit-large-patch14"), classnames=["cat", "dog"], templates=OPENAI_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)
+        classifier = zero_shot_classifier("openai/clip-vit-large-patch14", 
+                                          tokenizer=AutoTokenizer.from_pretrained(
+                                              "openai/clip-vit-large-patch14"), 
+                                          classnames=["cat", "dog"], 
+                                          templates=OPENAI_IMAGENET_TEMPLATES, 
+                                          device="cpu", amp=True, use_format=False)
         print(classifier)
         assert classifier is not None
 
     def test_zero_shot_classifier_invalid_model():
-        invalid_model_name = "invalid/model-name"
+        invalid_model_name = "invalid_name"
         with pytest.raises(ValueError):
             zero_shot_classifier(invalid_model_name, tokenizer=AutoTokenizer.from_pretrained("openai/clip-vit-large-patch14"), classnames=["cat", "dog"], templates=OPENAI_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)
         print(ValueError, f"Expected ValueError for invalid model name: {invalid_model_name}")
 
     def test_zero_shot_classifier_no_model_specified():
         with pytest.raises(ValueError):
-            zero_shot_classifier("", tokenizer=AutoTokenizer.from_pretrained("claude/claude-2"), classnames=["cat", "dog"], templates=ANTHROPIC_CLAUDE_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)
-        print(ValueError, "Expected ValueError for no model specified")
+            zero_shot_classifier("", 
+                                 tokenizer=AutoTokenizer.from_pretrained(
+                                     "claude/claude-2"), 
+                                     classnames=["cat", "dog"], 
+                                     templates=ANTHROPIC_CLAUDE_IMAGENET_TEMPLATES, 
+                                     device="cpu", amp=True, use_format=False)
+        print(ValueError, 
+              "Expected ValueError for no model specified")
 
     def test_zero_shot_classifier_invalid_tokenizer():
         invalid_tokenizer_name = "invalid/tokenizer-name"
         with pytest.raises(ValueError):
-            zero_shot_classifier("vit_base_patch16_224", tokenizer=AutoTokenizer.from_pretrained(invalid_tokenizer_name), classnames=["cat", "dog"], templates=OPENAI_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)
-        print(ValueError, f"Expected ValueError for invalid tokenizer name: {invalid_tokenizer_name}")
+            zero_shot_classifier("vit_base_patch16_224", 
+                                 tokenizer=AutoTokenizer.from_pretrained(
+                                     invalid_tokenizer_name), 
+                                     classnames=["cat", "dog"], 
+                                     templates=OPENAI_IMAGENET_TEMPLATES, 
+                                     device="cpu", amp=True, use_format=False)
+        print(ValueError, 
+              (f"Expected ValueError for \n"
+               f"invalid tokenizer name: \n"
+                f"{invalid_tokenizer_name}")
+                )
         
     def test_zero_shot_classifier_invalid_classnames():
         invalid_classnames = ["", ""]  # Empty class names
         with pytest.raises(ValueError):
-            zero_shot_classifier("vit_base_patch16_224", tokenizer=AutoTokenizer.from_pretrained("openai/clip-vit-large-patch14"), classnames=invalid_classnames, templates=OPENAI_IMAGENET_TEMPLATES, device="cpu", amp=True, use_format=False)
-        print(ValueError, f"Expected ValueError for invalid class names: {invalid_classnames}")
+            zero_shot_classifier("vit_base_patch16_224", 
+                                 tokenizer=AutoTokenizer.from_pretrained(
+                                     "openai/clip-vit-large-patch14"), 
+                                     classnames=invalid_classnames, 
+                                     templates=OPENAI_IMAGENET_TEMPLATES, 
+                                     device="cpu", amp=True, use_format=False)
+        print(ValueError, (f"Expected ValueError \n"
+                           f"for invalid class names:\n"
+                            f"{invalid_classnames}")
+        )
 
     def test_zero_shot_classifier_all_models():
         for model_name in MODEL_CATEGORIES:
