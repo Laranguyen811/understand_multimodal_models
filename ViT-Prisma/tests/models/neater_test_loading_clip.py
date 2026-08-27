@@ -86,10 +86,17 @@ MODEL_LIST = [
 TOLERANCE = 1e-4
 DEVICE = "cuda"
 
-@timeout_decorator.timeout(60)  # 1 minute timeout for each model. Only use timeouts as a last resort to prevent infinite hangs, not as a primary way to manage test runtime.
-@pytest.mark.slow # Mark this test as slow since it loads many models and runs inference
-@pytest.mark.parametrize("model_name", MODEL_LIST)
-def test_loading_clip(model_name):
+@timeout_decorator.timeout(60)  # 1 minute timeout for each model.
+#  Only use timeouts as a last resort to prevent infinite hangs
+#  Avoid using timeout as a primary way to manage test runtime.
+
+# Mark this test as slow since it loads many models and runs inference
+@pytest.mark.slow
+@pytest.mark.parametrize("model_name", 
+                        MODEL_LIST)
+
+def test_loading_clip(
+                    model_name):
     """Test that the outputs of the HookedViT model match the original model."""
     # Generate a random input image
     input_image = generate_random_input(
@@ -116,11 +123,13 @@ def print_divergence_info(og_output, hooked_output, model_name):
     print(f"\nDivergence Analysis for {model_name}:")
     print(f"Max difference:     {max_diff:.8f}")
     print(f"Mean difference:    {mean_diff:.8f}")
-    print(f"Median difference:  {median_diff:.8f}")
+    print(
+          f"Median difference:  {median_diff:.8f}")
 
     # Print location of max difference
     if max_diff > 0:
-        max_loc = torch.where(diff == max_diff)
+        max_loc = torch.where(
+                                diff == max_diff)
         print(f"Location of max difference: {tuple(idx.tolist() for idx in max_loc)}")
         print(f"Original value at max diff: {og_output[max_loc].item():.8f}")
         print(f"Hooked value at max diff:   {hooked_output[max_loc].item():.8f}")
@@ -154,11 +163,14 @@ def test_open_clip_model(model_name, input_image):
         og_output, *_ = og_model(input_image)
         hooked_output = hooked_model(input_image)
 
-    print_divergence_info(og_output, hooked_output, model_name)
+    print_divergence_info(og_output, 
+                          hooked_output, 
+                          model_name)
 
     assert torch.allclose(
         og_output, hooked_output, atol=TOLERANCE
-    ), f"{model_name} output diverges! Max diff: {torch.max(torch.abs(hooked_output - og_output))}"
+    ), f"{model_name} output diverges! Max diff: {torch.max(
+        torch.abs(hooked_output - og_output))}"
 
 
 def test_dino_model(model_name, input_image):
@@ -177,12 +189,15 @@ def test_dino_model(model_name, input_image):
     hooked_model.to(DEVICE)
     hooked_output = hooked_model(input_image)
 
-    print_divergence_info(dino_output, hooked_output, model_name)
+    print_divergence_info(dino_output, 
+                          hooked_output, 
+                          model_name)
 
     # Ensure outputs are close
     assert torch.allclose(
         hooked_output, dino_output, atol=TOLERANCE
-    ), f"{model_name} output diverges! Max diff: {torch.max(torch.abs(hooked_output - dino_output))}"
+    ), f"{model_name} output diverges! Max diff: {torch.max(
+                                                torch.abs(hooked_output - dino_output))}"
 
 
 def test_hf_clip_model(model_name, input_image):
@@ -214,12 +229,15 @@ def test_hf_clip_model(model_name, input_image):
     # Compare outputs
     with torch.no_grad():
         # Hugging Face CLIP vision model output
-        hf_output = hf_model.get_image_features(input_image)
+        hf_output = hf_model.get_image_features(
+                                                input_image)
 
         # HookedViT model output
         hooked_output = hooked_model(input_image)
 
-    print_divergence_info(hf_output, hooked_output, model_name)
+    print_divergence_info(hf_output, 
+                          hooked_output, 
+                          model_name)
 
     # Ensure outputs are close
     assert torch.allclose(

@@ -35,6 +35,7 @@ from vit_prisma.prisma_tools import FactoredMatrix
 from vit_prisma.prisma_tools.activation_cache import ActivationCache
 from vit_prisma.prisma_tools.hook_point import HookPoint
 from vit_prisma.prisma_tools.hooked_root_module import HookedRootModule
+from numpy import einsum as np_einsum
 
 from vit_prisma.utils import devices
 from vit_prisma.utils.prisma_utils import transpose
@@ -89,7 +90,7 @@ class HookedViT(HookedTransformer):
         if (hasattr(self.cfg, "use_cls_token")
             and self.cfg.use_cls_token
             and hasattr(self.cfg, "d_model")):
-            self.cls_token = nn.Parameter(torch.randn(1, 1, self.cfg.d_model))
+            self.cls_token = nn.Parameter(torch.randn(1, 1, 2))
 
         else:
             self.cls_token = nn.Parameter(torch.randn(1, 1, 512))
@@ -208,8 +209,11 @@ class HookedViT(HookedTransformer):
             if self.cfg.use_cls_token:
                 cls_tokens = self.cls_token.expand(
                     batch_size, -1, -1
-                )  # CLS token for each item in the batch
-                embed = torch.cat((cls_tokens, embed), dim=1)  # Add to embedding
+                )  # Create a copy of the CLS token for each item in the batch
+                print("Embed shape before adding CLS token:", embed.shape)
+                print("CLS token shape:", cls_tokens.shape)
+                
+                embed = torch.cat([embed, cls_tokens], dim=1)  # Add to embedding
             else:
                 logging.info("Not using CLS token as per config")
         else:

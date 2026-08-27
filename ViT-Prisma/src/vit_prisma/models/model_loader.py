@@ -337,8 +337,8 @@ def check_model_name(model_name: str,
 def load_original_weights(
     model_name: str,
     category: ModelCategory,
-    model_type: ModelType,
     dtype: torch.dtype,
+    weights = None,
     **kwargs,
 ) -> Any:
     """Load weights for a specific model based on its category."""
@@ -353,26 +353,29 @@ def load_original_weights(
     if (
         "eva02" in model_name.lower() or "eva_" in model_name.lower()
     ) and category == ModelCategory.OPEN_CLIP:
-        return _load_eva02_weights(model_name, **kwargs)
+        return weights[eva02_weights]
 
     if category == ModelCategory.TIMM:
-        return _load_timm_weights(model_name, **kwargs)
+        return weights[timm_weights]
     if category == ModelCategory.CLIP:
-        return _load_clip_weights(model_name, dtype, **kwargs)
+        return weights[clip_weights]
     if category == ModelCategory.OPEN_CLIP:
-        return _load_open_clip_weights(model_name, local_path=local_path, **kwargs)
+        return weights[open_clip_weights]
     if category == ModelCategory.DINO:
-        return _load_dino_weights(model_name, dtype, **kwargs)
+        return weights[dino_weights]
     if category == ModelCategory.VIVIT:
-        return _load_vivit_weights(model_name, dtype, **kwargs)
+        return weights[vivit_weights]
     if category == ModelCategory.VJEPA:
-        return _load_vjepa_weights(model_name, **kwargs)
+        return weights[vjepa_weights]
     if category == ModelCategory.KANDINSKY:
-        return _load_kandinsky_weights(model_name, **kwargs)
+        return weights[kandinsky_clip_weights]
 
     raise ValueError(f"Unsupported model category: {category}")
 
 
+#TODO: write a function to create a dictionary of weight dictionaries
+
+     
 def convert_weights(
     original_weights: Any,
     model_name: str,
@@ -449,6 +452,7 @@ def load_hooked_model(
     use_attn_result: bool = False,
     allow_failing: bool = False,
     local_path: Optional[str] = None,
+    config_overrides: Optional[Dict[str, Any]] = None,
     **kwargs,
 ) -> Any:
     """
@@ -494,7 +498,7 @@ def load_hooked_model(
 
     model_name = check_model_name(model_name, allow_failing)
 
-    config = load_config(model_name, model_type, local_path, **kwargs)
+    config = config_overrides
 
     if model_class is None:
         if isinstance(model_type, ModelType):
@@ -601,312 +605,195 @@ def _get_open_clip_config(model_name: str,
     return model_config
 
 
-#def _create_config_from_open_clip(model_cfg, 
-#                                  model_name, 
-#                                  model_type: ModelType):
+def _create_config_from_open_clip(model_cfg, 
+                                  model_name, 
+                                  model_type: ModelType):
 
-#    cfg = HookedViTConfig()
-#    cfg.d_model = model_cfg["vision_cfg"]["width"] if hasattr(model_cfg["vision_cfg"], "width") else 768
-#    cfg.n_layers = model_cfg["vision_cfg"]["layers"] if hasattr(model_cfg["vision_cfg"], "layers") else 1
-#    cfg.patch_size = model_cfg["vision_cfg"]["patch_size"] if hasattr(model_cfg["vision_cfg"], "patch_size") else 16
-#    cfg.image_size = model_cfg["vision_cfg"]["image_size"] if hasattr(model_cfg["vision_cfg"], "image_size") else 224
-#    cfg.n_classes = model_cfg["embed_dim"] if hasattr(model_cfg, "embed_dim") else cfg.d_model
-#    # cfg.n_heads = model_cfg['vision_cfg']['num_attention_heads']
+    cfg = HookedViTConfig()
+    cfg.d_model = model_cfg["vision_cfg"]["width"] if hasattr(model_cfg["vision_cfg"], "width") else 768
+    cfg.n_layers = model_cfg["vision_cfg"]["layers"] if hasattr(model_cfg["vision_cfg"], "layers") else 1
+    cfg.patch_size = model_cfg["vision_cfg"]["patch_size"] if hasattr(model_cfg["vision_cfg"], "patch_size") else 16
+    cfg.image_size = model_cfg["vision_cfg"]["image_size"] if hasattr(model_cfg["vision_cfg"], "image_size") else 224
+    cfg.n_classes = model_cfg["embed_dim"] if hasattr(model_cfg, "embed_dim") else cfg.d_model
+    # cfg.n_heads = model_cfg['vision_cfg']['num_attention_heads']
 
-#    cfg.model_name = model_name
+    cfg.model_name = model_name
 
     # Attention head number is not in open clip config, so we add it manually
-#    if "plus_clip" in model_name:
-#        cfg.n_heads = 14
-#    elif any(s in model_name for s in ["vit_xsmall"]):
-#        cfg.n_heads = 8
-#    elif any(s in model_name for s in ["ViT-B", "vit-base"]):
-#        cfg.n_heads = 12
-#    elif any(s in model_name for s in ["ViT-L", "vit_large", "vit_medium", "bigG"]):
-#        cfg.n_heads = 16
-#    elif any(s in model_name for s in ["huge_", "ViT-H"]):
-#        cfg.n_heads = 20
-#    elif any(s in model_name for s in ["ViT-g", "giant_"]):
-#        cfg.n_heads = 22
-#    elif any(s in model_name for s in ["gigantic_"]):
-#        cfg.n_heads = 26
-#    else:
-#        cfg.n_heads = 12
+    if "plus_clip" in model_name:
+        cfg.n_heads = 14
+    elif any(s in model_name for s in ["vit_xsmall"]):
+        cfg.n_heads = 8
+    elif any(s in model_name for s in ["ViT-B", "vit-base"]):
+        cfg.n_heads = 12
+    elif any(s in model_name for s in ["ViT-L", "vit_large", "vit_medium", "bigG"]):
+        cfg.n_heads = 16
+    elif any(s in model_name for s in ["huge_", "ViT-H"]):
+        cfg.n_heads = 20
+    elif any(s in model_name for s in ["ViT-g", "giant_"]):
+        cfg.n_heads = 22
+    elif any(s in model_name for s in ["gigantic_"]):
+        cfg.n_heads = 26
+    else:
+        cfg.n_heads = 12
 
     # Set MLP dimension
-#    if model_cfg["vision_cfg"].get("mlp_ratio"):
-#        cfg.d_mlp = int(cfg.d_model * model_cfg["vision_cfg"].get("mlp_ratio"))
-#    else:
-#        cfg.d_mlp = cfg.d_model * 4
+    if model_cfg["vision_cfg"].get("mlp_ratio"):
+        cfg.d_mlp = int(cfg.d_model * model_cfg["vision_cfg"].get("mlp_ratio"))
+    else:
+        cfg.d_mlp = cfg.d_model * 4
 
     # Common configurations
-#    cfg.normalization_type = "LN"
-#    cfg.return_type = "class_logits"
+    cfg.normalization_type = "LN"
+    cfg.return_type = "class_logits"
 
-#    return cfg
+    return cfg
 
 
-#def _create_config_from_hf(hf_config, 
-#                           model_name: str, 
-#                           model_type: ModelType):
+def _create_config_from_hf(hf_config, 
+                           model_name: str, 
+                           model_type: ModelType):
 #    """Create a general config from HuggingFace config for any vision or text transformer."""
-#    if model_type == ModelType.VISION or model_type == None:  # VISION
-#        config = HookedViTConfig()
+    if model_type == ModelType.VISION or model_type == None:  # VISION
+        config = HookedViTConfig()
 
         # Core architecture parameters
-#        config.input_size = getattr(hf_config, "input_size", 224)
-#        config.output_size = getattr(hf_config, "output_size", 768)
-#        config.d_model = hf_config.d_model if hasattr(hf_config, "d_model") else 768
-#        config.n_layers = hf_config.num_hidden_layers if hasattr(hf_config, "num_hidden_layers") else 1 
-#        config.n_heads = hf_config.n_heads if hasattr(hf_config, "n_heads") else config.d_model // 64  # Default to 64-dim heads if not specified
-#        config.d_head = hf_config.d_model // hf_config.n_heads if hasattr(hf_config, "n_heads") else 64  # Default to 4x MLP expansion if not specified
-#        config.d_mlp = hf_config.intermediate_size if hasattr(hf_config, "intermediate_size") else (config.input_size + config.output_size)/2  # Default to the mean of input and output size if not specified
+        config.input_size = getattr(hf_config, "input_size", 224)
+        config.output_size = getattr(hf_config, "output_size", 768)
+        config.d_model = hf_config.d_model if hasattr(hf_config, "d_model") else 768
+        config.n_layers = hf_config.num_hidden_layers if hasattr(hf_config, "num_hidden_layers") else 1 
+        config.n_heads = hf_config.n_heads if hasattr(hf_config, "n_heads") else config.d_model // 64  # Default to 64-dim heads if not specified
+        config.d_head = hf_config.d_model // hf_config.n_heads if hasattr(hf_config, "n_heads") else 64  # Default to 4x MLP expansion if not specified
+        config.d_mlp = hf_config.intermediate_size if hasattr(hf_config, "intermediate_size") else (config.input_size + config.output_size)/2  # Default to the mean of input and output size if not specified
 
         # Vision-specific parameters
-#        config.image_size = getattr(hf_config, "image_size", 224)
-#        config.n_channels = getattr(hf_config, "num_channels", 3)
-#        config.patch_size = getattr(hf_config, "patch_size", 16)
+        config.image_size = getattr(hf_config, "image_size", 224)
+        config.n_channels = getattr(hf_config, "num_channels", 3)
+        config.patch_size = getattr(hf_config, "patch_size", 16)
 
         # Handle different types of patch sizes
-#        if hasattr(hf_config, "tubelet_size"):
-#            config.patch_size = hf_config.tubelet_size[1]
-#            config.is_video_transformer = True
-#            config.video_tubelet_depth = hf_config.tubelet_size[0]
-#            config.video_num_frames = hf_config.video_size[0]
+        if hasattr(hf_config, "tubelet_size"):
+            config.patch_size = hf_config.tubelet_size[1]
+            config.is_video_transformer = True
+            config.video_tubelet_depth = hf_config.tubelet_size[0]
+            config.video_num_frames = hf_config.video_size[0]
 
-#    elif model_type == ModelType.TEXT:  # TEXT
-#        config = HookedTextTransformerConfig()
-#        config.input_size = getattr(hf_config, "input_size", 512)
-#        config.output_size = getattr(hf_config, "output_size", 768)
-#        config.d_model = hf_config.hidden_size if hasattr(hf_config, "hidden_size",) else 768
-#        config.n_layers = hf_config.num_hidden_layers if hasattr(hf_config, "num_hidden_layers") else 1
-#        config.n_heads = hf_config.num_attention_heads if hasattr(hf_config, "num_attention_heads") else config.d_model // 64  # Default to 64-dim heads if not specified
-#        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads if hasattr(hf_config, "hidden_size") and hasattr(hf_config, "num_attention_heads") else 64  # Default to 64-dim heads if not specified
-#        config.d_mlp = hf_config.intermediate_size if hasattr(hf_config, "intermediate_size") else (config.input_size + config.output_size)/2  # Default to the mean of input and output size if not specified
-#        config.vocab_size = hf_config.vocab_size if hasattr(hf_config, "vocab_size") else 30522  # Default to BERT vocab size if not specified
-#        config.context_length = getattr(hf_config, "max_position_embeddings", 77)
+    elif model_type == ModelType.TEXT:  # TEXT
+        config = HookedTextTransformerConfig()
+        config.input_size = getattr(hf_config, "input_size", 512)
+        config.output_size = getattr(hf_config, "output_size", 768)
+        config.d_model = hf_config.hidden_size if hasattr(hf_config, "hidden_size",) else 768
+        config.n_layers = hf_config.num_hidden_layers if hasattr(hf_config, "num_hidden_layers") else 1
+        config.n_heads = hf_config.num_attention_heads if hasattr(hf_config, "num_attention_heads") else config.d_model // 64  # Default to 64-dim heads if not specified
+        config.d_head = hf_config.hidden_size // hf_config.num_attention_heads if hasattr(hf_config, "hidden_size") and hasattr(hf_config, "num_attention_heads") else 64  # Default to 64-dim heads if not specified
+        config.d_mlp = hf_config.intermediate_size if hasattr(hf_config, "intermediate_size") else (config.input_size + config.output_size)/2  # Default to the mean of input and output size if not specified
+        config.vocab_size = hf_config.vocab_size if hasattr(hf_config, "vocab_size") else 30522  # Default to BERT vocab size if not specified
+        config.context_length = getattr(hf_config, "max_position_embeddings", 77)
 
     # Common parameters
-#    config.model_name = model_name
-#    config.initializer_range = getattr(hf_config, "initializer_range", 0.02)
-#    config.eps = getattr(hf_config, "layer_norm_eps", 1e-5)
+    config.model_name = model_name
+    config.initializer_range = getattr(hf_config, "initializer_range", 0.02)
+    config.eps = getattr(hf_config, "layer_norm_eps", 1e-5)
 
     # Handle output dimension
-#    if hasattr(hf_config, "projection_dim"):
-#        config.n_classes = hf_config.projection_dim
-#        config.return_type = "class_logits"
-#    elif hasattr(hf_config, "num_classes"):
-#        config.n_classes = hf_config.num_classes
-#        config.return_type = "class_logits"
-#    else:
-#        config.n_classes = config.d_model
-#        config.return_type = "pre_logits"
+    if hasattr(hf_config, "projection_dim"):
+        config.n_classes = hf_config.projection_dim
+        config.return_type = "class_logits"
+    elif hasattr(hf_config, "num_classes"):
+        config.n_classes = hf_config.num_classes
+        config.return_type = "class_logits"
+    else:
+        config.n_classes = config.d_model
+        config.return_type = "pre_logits"
 
-#    return config
+    return config
 
 
-# def _create_clip_config_from_hf(hf_config, model_name: str, model_type: ModelType):
-#     """Create Prisma config from HuggingFace config."""
-#     if model_type == ModelType.VISION:
-#         config = HookedViTConfig()
+def _create_clip_config_from_hf(hf_config, model_name: str, model_type: ModelType):
+     """Create Prisma config from HuggingFace config."""
+     if model_type == ModelType.VISION:
+         config = HookedViTConfig()
 
-#         # Extract patch size
-#         if hasattr(hf_config, "patch_size"):
-#             config.patch_size = hf_config.patch_size
-#         elif hasattr(hf_config, "tubelet_size"):
-#             config.patch_size = hf_config.tubelet_size[1]
+         # Extract patch size
+         if hasattr(hf_config, "patch_size"):
+             config.patch_size = hf_config.patch_size
+         elif hasattr(hf_config, "tubelet_size"):
+             config.patch_size = hf_config.tubelet_size[1]
 
 #         # Common attributes
-#         config.d_model = hf_config.vision_config.hidden_size
-#         config.n_layers = hf_config.vision_config.num_hidden_layers
-#         config.n_heads = hf_config.vision_config.num_attention_heads
-#         config.d_head = hf_config.vision_config.hidden_size // hf_config.vision_config.num_attention_heads
-#         config.d_mlp = hf_config.vision_config.intermediate_size
-#         config.image_size = getattr(hf_config, "image_size", 224)
-#         config.n_channels = getattr(hf_config, "num_channels", 3)
-#         config.patch_size = getattr(hf_config, "patch_size", 16)
-#         config.initializer_range = getattr(hf_config, "initializer_range", 0.02)
+         config.d_model = hf_config.vision_config.hidden_size
+         config.n_layers = hf_config.vision_config.num_hidden_layers
+         config.n_heads = hf_config.vision_config.num_attention_heads
+         config.d_head = hf_config.vision_config.hidden_size // hf_config.vision_config.num_attention_heads
+         config.d_mlp = hf_config.vision_config.intermediate_size
+         config.image_size = getattr(hf_config, "image_size", 224)
+         config.n_channels = getattr(hf_config, "num_channels", 3)
+         config.patch_size = getattr(hf_config, "patch_size", 16)
+         config.initializer_range = getattr(hf_config, "initializer_range", 0.02)
 
-#         config.model_name = model_name
+         config.model_name = model_name
 
-#         if hasattr(hf_config, "layer_norm_eps"):
-#             config.eps = hf_config.layer_norm_eps
+         if hasattr(hf_config, "layer_norm_eps"):
+             config.eps = hf_config.layer_norm_eps
 
 
-#         # Set output dimension appropriately
-#         if hasattr(hf_config, "projection_dim"):
-#             config.n_classes = hf_config.projection_dim
-#             config.return_type = "class_logits"
-#         elif hasattr(hf_config, "num_classes"):
-#             config.n_classes = hf_config.num_classes
-#             config.return_type = "class_logits"
-#         else:
-#             config.n_classes = config.d_model
-#             config.return_type = "pre_logits"
+         # Set output dimension appropriately
+         if hasattr(hf_config, "projection_dim"):
+             config.n_classes = hf_config.projection_dim
+             config.return_type = "class_logits"
+         elif hasattr(hf_config, "num_classes"):
+             config.n_classes = hf_config.num_classes
+             config.return_type = "class_logits"
+         else:
+             config.n_classes = config.d_model
+             config.return_type = "pre_logits"
 
 
 #         # Video-specific settings
-#         if hasattr(hf_config, "tubelet_size"):
-#             config.is_video_transformer = True
-#             config.video_tubelet_depth = hf_config.tubelet_size[0]
-#             config.video_num_frames = hf_config.video_size[0]
+         if hasattr(hf_config, "tubelet_size"):
+             config.is_video_transformer = True
+             config.video_tubelet_depth = hf_config.tubelet_size[0]
+             config.video_num_frames = hf_config.video_size[0]
 
-#     else:  # TEXT
-#         config = HookedTextTransformerConfig()
-#         config.d_model = hf_config.hidden_size
-#         config.n_layers = hf_config.num_hidden_layers
-#         config.n_heads = hf_config.num_attention_heads
-#         config.d_head = hf_config.hidden_size // hf_config.num_attention_heads
-#         config.d_mlp = hf_config.intermediate_size
-#         config.vocab_size = hf_config.vocab_size
-#         config.context_length = getattr(hf_config, "max_position_embeddings", 77)
-#         config.eps = hf_config.layer_norm_eps
+     else:  # TEXT
+         config = HookedTextTransformerConfig()
+         config.d_model = hf_config.hidden_size
+         config.n_layers = hf_config.num_hidden_layers
+         config.n_heads = hf_config.num_attention_heads
+         config.d_head = hf_config.hidden_size // hf_config.num_attention_heads
+         config.d_mlp = hf_config.intermediate_size
+         config.vocab_size = hf_config.vocab_size
+         config.context_length = getattr(hf_config, "max_position_embeddings", 77)
+         config.eps = hf_config.layer_norm_eps
 
-#     return config
+     return config
 
 
-#def create_config_object(model_name: str, model_type: ModelType) -> ConfigType:
-#    """
-#    Create a configuration object for a specific model.
+def create_config_object(model_name: str, model_type: ModelType) -> ConfigType:
+    """
+    Create a configuration object for a specific model.
 
-#    Args:
-#        model_name: Model name
-#        model_type: Model type
+    Args:
+        model_name: Model name
+        model_type: Model type
 
-#    Returns:
-#        HookedViTConfig or HookedTextTransformerConfig object
-#    """
-#    # Get raw configuration dictionary
-#    try:
-#        config_dict = MODEL_CONFIGS[model_type][model_name]
-#    except KeyError:
-#        raise ValueError(
-#            f"No configuration found for {model_name} with type {model_type}"
-#        )
+    Returns:
+        HookedViTConfig or HookedTextTransformerConfig object
+    """
+    # Get raw configuration dictionary
+    try:
+        config_dict = MODEL_CONFIGS[model_type][model_name]
+    except KeyError:
+        raise ValueError(
+            f"No configuration found for {model_name} with type {model_type}"
+        )
 
     # Create appropriate config object
-#    if model_type == ModelType.VISION:
-#        return HookedViTConfig(**config_dict)
-#    else:
-#        return HookedTextTransformerConfig(**config_dict)
+    if model_type == ModelType.VISION:
+        return HookedViTConfig(**config_dict)
+    else:
+        return HookedTextTransformerConfig(**config_dict)
 
-
-#def load_original_weights(
-#    model_name: str,
-#    category: ModelCategory,
-#    model_type: ModelType,
-#    dtype: torch.dtype,
-#    **kwargs,
-#) -> Any:
-#    """
-#    Load weights for a specific model based on its category.
-
-#    Args:
-#        model_name: Model name
-#        category: Model category
-#        model_type: Model type
-#        dtype: Data type
-#        **kwargs: Additional loading parameters
-
-#    Returns:
-#        Original weights in source format
-#    """
-    # Handle torch_dtype in kwargs
-#    if "torch_dtype" in kwargs:
-#        dtype = kwargs["torch_dtype"]
-#        del kwargs["torch_dtype"]
-
-    # Get local_path from kwargs if it exists
-#    local_path = kwargs.pop("local_path", None)
-#    if local_path is not None and category != ModelCategory.OPEN_CLIP:
-#        raise ValueError("Local path loading is only supported for OpenCLIP models")
-
-    # Special handling for EVA02 models
-#    if (
-#        "eva02" in model_name.lower() or "eva_" in model_name.lower()
-#    ) and category == ModelCategory.OPEN_CLIP:
-#        return _load_eva02_weights(model_name, **kwargs)
-
-    # Dispatch to appropriate loader based on category
-#    if category == ModelCategory.TIMM:
-#        return _load_timm_weights(model_name, **kwargs)
-
-#    elif category == ModelCategory.CLIP:
-#        return _load_clip_weights(model_name, dtype, **kwargs)
-
-#    elif category == ModelCategory.OPEN_CLIP:
-#        return _load_open_clip_weights(model_name, local_path=local_path, **kwargs)
-
-#    elif category == ModelCategory.DINO:
-#        return _load_dino_weights(model_name, dtype, **kwargs)
-
-#    elif category == ModelCategory.VIVIT:
-#        return _load_vivit_weights(model_name, dtype, **kwargs)
-
-#    elif category == ModelCategory.VJEPA:
-#        return _load_vjepa_weights(model_name, **kwargs)
-
-#    elif category == ModelCategory.KANDINSKY:
-#        return _load_kandinsky_weights(model_name, **kwargs)
-
-#    else:
-#        raise ValueError(f"Unsupported model category: {category}")
-
-
-#def convert_weights(
-#    original_weights: Any,
-#    model_name: str,
-#    category: ModelCategory,
-#    config: ConfigType,
-#    model_type: ModelType,
-#) -> Dict[str, torch.Tensor]:
-#    """
-#    Convert weights for a specific model.
-
-#    Args:
-#        original_weights: Original weights
-#        model_name: Model name
-#        category: Model category
-#        config: Model configuration
-#        model_type: Model type
-
-#    Returns:
-#        Converted weights in Prisma format
-#    """
-#    # Special case for EVA02 models - use TIMM converter
-#    if (
-#        "eva02" in model_name.lower() or "eva_" in model_name.lower()
-#    ) and category == ModelCategory.OPEN_CLIP:
-#        return convert_timm_weights(original_weights, config)
-
-    # Special case for CLIP models that need unpacking
-#    if category == ModelCategory.CLIP and model_type == ModelType.VISION:
-#        vision_weights = original_weights.vision_model.state_dict()
-#        projection_weights = original_weights.visual_projection.state_dict()
-#        return convert_clip_weights(vision_weights, projection_weights, config)
-
-    # Get appropriate converter based on category and type
-#    if category == ModelCategory.TIMM:
-#        converter = convert_timm_weights
-#    elif category == ModelCategory.OPEN_CLIP:
-#        converter = (
-#            convert_open_clip_text_weights
-#            if model_type == ModelType.TEXT
-#            else convert_open_clip_weights
-#        )
-#    elif category == ModelCategory.DINO:
-#        converter = convert_dino_weights
-#    elif category == ModelCategory.VIVIT:
-#        converter = convert_vivet_weights
-#    elif category == ModelCategory.VJEPA:
-#        converter = convert_vjepa_weights
-#    elif category == ModelCategory.KANDINSKY:
-#        converter = convert_kandinsky_clip_weights
-#    else:
-#        raise ValueError(f"No converter available for {category} with {model_type}")
-
-    # Apply converter
-#    return converter(original_weights, config)
 
 
 def fill_missing_keys(model, state_dict):
@@ -949,8 +836,19 @@ def fill_missing_keys(model, state_dict):
 # ===============================
 
 
-def _load_timm_weights(model_name, **kwargs):
-    """Load weights from a TIMM model."""
+def _load_timm_weights(timm_model_name, **kwargs)-> Dict[str, torch.Tensor]:
+    """
+    Loads weights from a TIMM model.
+    Args:
+        timm_model_name: Name of the TIMM model
+        **kwargs: Additional arguments for TIMM model creation
+    Returns:
+        Dictionary of model weights for the specified TIMM model
+    >>> Example:
+        >>> _load_timm_weights("vit_base_patch16_224")
+        >>> {'patch_embed.proj.weight': tensor(...), 'patch_embed.proj.bias': tensor(...), ...}
+
+    """
     try:
         import timm
     except ImportError:
@@ -958,36 +856,71 @@ def _load_timm_weights(model_name, **kwargs):
             "TIMM is required but not installed. Install with 'pip install timm'"
         )
 
-    model = timm.create_model(model_name, pretrained=True)
-    for param in model.parameters():
-        param.requires_grad = False
-    return model.state_dict()
+    timm_model = timm.create_model(timm_model_name, pretrained=True)
+    for timm_param in timm_model.parameters():
+        timm_param.requires_grad = False
+    timm_weights = timm_model.state_dict()
+    return timm_weights
 
 
-def _load_clip_weights(model_name, dtype, **kwargs):
-    """Load weights from a CLIP model."""
+def _load_clip_weights(clip_model_name, dtype, **kwargs)-> Dict[str, torch.Tensor]:
+    """
+    Loads weights from a CLIP model.
+    Args:
+        clip_model_name: Name of the CLIP model
+        dtype: Data type for model parameters
+        **kwargs: Additional arguments for CLIP model creation
+    Returns:
+        Dictionary of model weights for the specified CLIP model
+    >>> Example:
+        >>> _load_clip_weights("openai/clip-vit-base-patch16", torch.float32)
+        >>> {'vision_model.conv1.weight': tensor(...), 'vision_model.conv1.bias': tensor(...), ...}
+    """
     from transformers import CLIPModel
 
-    model = CLIPModel.from_pretrained(model_name, torch_dtype=dtype, **kwargs)
-    for param in model.parameters():
-        param.requires_grad = False
-    return model
+    clip_model = CLIPModel.from_pretrained(clip_model_name, torch_dtype=dtype, **kwargs)
+    for clip_param in clip_model.parameters():
+        clip_param.requires_grad = False
+    clip_weights = clip_model.state_dict()
+    return clip_weights
 
 
-def _load_open_clip_weights(model_name, local_path=None, **kwargs):
-    """Load weights from an OpenCLIP model."""
+def _load_open_clip_weights(open_clip_model_name, local_path=None, **kwargs) -> Dict[str, torch.Tensor]:
+    """
+    Loads weights from an OpenCLIP model.
+    Args:
+        open_clip_model_name: Name of the OpenCLIP model
+        local_path: Optional local path to the model weights
+        **kwargs: Additional arguments for OpenCLIP model creation
+    Returns:
+        Dictionary of model weights for the specified OpenCLIP model
+    >>> Example:
+        >>> _load_open_clip_weights("open-clip:timm/vit_base_patch16_clip_224.openai")
+        >>> {'visual.conv1.weight': tensor(...), 'visual.conv1.bias': tensor(...), ...}
+    """
     if local_path is not None:
         checkpoint_path = local_path
     else:
         checkpoint_path = download_pretrained_from_hf(
-            remove_open_clip_prefix(model_name),
+            remove_open_clip_prefix(open_clip_model_name),
             filename="open_clip_pytorch_model.bin",
         )
-    return load_state_dict(checkpoint_path)
+    open_clip_weights = load_state_dict(checkpoint_path)
+    return open_clip_weights
 
 
-def _load_eva02_weights(model_name, **kwargs):
-    """Special loader for EVA02 models from TIMM."""
+def _load_eva02_weights(eva02_model_name, **kwargs) -> Dict[str, torch.Tensor]:
+    """
+    Loads weights for EVA02 models from TIMM especially.
+    Args:
+        eva02_model_name: Name of the EVA02 model
+        **kwargs: Additional arguments for TIMM model creation
+    Returns:
+        Dictionary of model weights for the specified EVA02 model
+    >>> Example:
+        >>> _load_eva02_weights("open-clip:timm/vit_large_patch14_clip_224.metaclip_2pt5b")
+        >>> {'patch_embed.proj.weight': tensor(...), 'patch_embed.proj.bias': tensor(...), ...}
+    """
     try:
         import timm
     except ImportError:
@@ -995,39 +928,75 @@ def _load_eva02_weights(model_name, **kwargs):
             "TIMM is required but not installed. Install with 'pip install timm'"
         )
 
-    model_name_clean = model_name.split("open-clip:")[1]
-    name, weights = model_name_clean.split(".")
-    name = name.split("/")[1]
-    model = timm.create_model(name, pretrained=weights)
-    for param in model.parameters():
-        param.requires_grad = False
-    return model.state_dict()
+    eva02_model_name_clean = eva02_model_name.split("open-clip:")[1]
+    eva02_name, eva02_weights = eva02_model_name_clean.split(".")
+    eva02_name = eva02_name.split("/")[1]
+    eva02_model = timm.create_model(eva02_name, pretrained=eva02_weights)
+    for eva02_param in eva02_model.parameters():
+        eva02_param.requires_grad = False
+
+    eva02_weights = eva02_model.state_dict()
+    return eva02_weights
 
 
-def _load_dino_weights(model_name, dtype, **kwargs):
-    """Load weights from a DINO model."""
+def _load_dino_weights(dino_model_name, dtype, **kwargs) -> Dict[str, torch.Tensor]:
+    """
+    Loads weights from a DINO model.
+    Args:
+        dino_model_name: Name of the DINO model
+        dtype: Data type for model parameters
+        **kwargs: Additional arguments for DINO model creation
+    Returns:
+        Dictionary of model weights for the specified DINO model
+    >>> Example:
+        >>> _load_dino_weights("facebook/dino-vits16", torch.float32)
+        >>> {'patch_embed.proj.weight': tensor(...), 'patch_embed.proj.bias': tensor(...), ...}
+    """
     from transformers import ViTModel
 
-    model = ViTModel.from_pretrained(model_name, torch_dtype=dtype, **kwargs)
-    for param in model.parameters():
-        param.requires_grad = False
-    return model.state_dict()
+    dino_model = ViTModel.from_pretrained(dino_model_name, torch_dtype=dtype, **kwargs)
+    for dino_param in dino_model.parameters():
+        dino_param.requires_grad = False
+    dino_weights = dino_model.state_dict()
+    return dino_weights
 
 
-def _load_vivit_weights(model_name, dtype, **kwargs):
-    """Load weights from a ViViT model."""
+def _load_vivit_weights(vivit_model_name, dtype, **kwargs) -> Dict[str, torch.Tensor]:
+    """
+    Loads weights from a ViViT model.
+    Args:
+        vivit_model_name: Name of the ViViT model
+        dtype: Data type for model parameters
+        **kwargs: Additional arguments for ViViT model creation
+    Returns:
+        Dictionary of model weights for the specified ViViT model
+    >>> Example:
+        >>> _load_vivit_weights("google/vivit", torch.float32)
+        >>> {'patch_embed.proj.weight': tensor(...), 'patch_embed.proj.bias': tensor(...), ...}
+    """
     from transformers import VivitForVideoClassification
 
-    model = VivitForVideoClassification.from_pretrained(
-        model_name, torch_dtype=dtype, **kwargs
+    vivit_model = VivitForVideoClassification.from_pretrained(
+        vivit_model_name, torch_dtype=dtype, **kwargs
     )
-    for param in model.parameters():
-        param.requires_grad = False
-    return model.state_dict()
+    for vivit_param in vivit_model.parameters():
+        vivit_param.requires_grad = False
+    vivit_weights = vivit_model.state_dict()
+    return vivit_weights
 
 
-def _load_vjepa_weights(model_name, **kwargs):
-    """Load weights from a VJEPA model."""
+def _load_vjepa_weights(vjepa_model_name, **kwargs) -> Dict[str, torch.Tensor]:
+    """
+    Loads weights from a VJEPA model.
+    Args:
+        vjepa_model_name: Name of the VJEPA model
+        **kwargs: Additional arguments for VJEPA model creation
+    Returns:
+        Dictionary of model weights for the specified VJEPA model.
+        >>> Example:
+            >>> _load_vjepa_weights("vit_prisma:vjepa_vit_base_patch16_224")
+            >>> {'patch_embed.proj.weight': tensor(...), 'patch_embed.proj.bias': tensor(...), ...}
+    """
     try:
         from importlib import resources
 
@@ -1039,24 +1008,90 @@ def _load_vjepa_weights(model_name, **kwargs):
         )
 
     with resources.open_text("vit_prisma.vjepa_hf", "paths_cw.yaml") as f:
-        model_paths = yaml.safe_load(f)
-    model_path = model_paths[model_name]["loc"]
-    model = VJEPAModel.from_pretrained(model_path)
-    return model.state_dict()
+        vivit_model_paths = yaml.safe_load(f)
+    vjepa_model_path = vivit_model_paths[vjepa_model_name]["loc"]
+    vjepa_model = VJEPAModel.from_pretrained(vjepa_model_path)
+    vjepa_weights = vjepa_model.state_dict()
+    return vjepa_weights
 
 
-def _load_kandinsky_weights(model_name, **kwargs):
-    """Load weights from a Kandinsky model."""
+def _load_kandinsky_weights(kandinsky_model_name, **kwargs)-> Dict[str, torch.Tensor]:
+    """
+    Load weights from a Kandinsky model.
+    Args:
+        kandinsky_model_name: Name of the Kandinsky model
+        **kwargs: Additional arguments for Kandinsky model creation
+    Returns:
+        Dictionary of model weights for the specified Kandinsky model
+    >>> Example:
+        >>> _load_kandinsky_weights("kandinsky-community/kandinsky-2-1-prior")
+        >>> {'image_encoder.conv1.weight': tensor(...), 'image_encoder.conv1.bias': tensor(...), ...}
+    """
     from transformers import CLIPVisionModelWithProjection
 
-    model = CLIPVisionModelWithProjection.from_pretrained(
+    kandinsky_model = CLIPVisionModelWithProjection.from_pretrained(
         "kandinsky-community/kandinsky-2-1-prior",
         subfolder="image_encoder",
         torch_dtype=torch.float16,
         cache_dir="/network/scratch/s/sonia.joseph/diffusion",
     ).to("cuda")
-    return model.state_dict()
+    kandinsky_weights = kandinsky_model.state_dict()
+    return kandinsky_weights
 
+
+def create_weights_dict(
+        timm_weights:Dict[str, torch.Tensor] = None,
+        clip_weights:Dict[str, torch.Tensor] = None,
+        open_clip_weights:Dict[str, torch.Tensor] = None,
+        eva02_weights:Dict[str, torch.Tensor] = None,
+        dino_weights:Dict[str, torch.Tensor] = None,
+        vivit_weights:Dict[str, torch.Tensor] = None,
+        vjepa_weights:Dict[str, torch.Tensor] = None,
+        kandinsky_clip_weights:Dict[str, torch.Tensor] = None,
+    ) -> Dict[str, Dict[str, torch.Tensor]]:
+    """
+    Create a dictionary of weight dictionaries for different model categories.
+    Args:
+        timm_weights (Dict[str, torch.Tensor], optional): Weights for TIMM models
+        clip_weights (Dict[str, torch.Tensor], optional): Weights for CLIP models
+        open_clip_weights (Dict[str, torch.Tensor], optional): Weights for OpenCLIP models
+        eva02_weights (Dict[str, torch.Tensor], optional): Weights for EVA02 models
+        dino_weights (Dict[str, torch.Tensor], optional): Weights for DINO models
+        vivit_weights (Dict[str, torch.Tensor], optional): Weights for ViViT models
+        vjepa_weights (Dict[str, torch.Tensor], optional): Weights for VJEPA models
+        kandinsky_clip_weights (Dict[str, torch.Tensor], optional): Weights for Kandinsky CLIP models
+    Returns:
+        Dict[str, Dict[str, torch.Tensor]]: Dictionary containing weight dictionaries for each model category
+    >>> For example:
+        >>> create_weights_dict(timm_weights={'weight1': tensor(...), 'weight2': tensor(...)}, clip_weights={'weightA': tensor(...), 'weightB': tensor(...)})
+        >>> {'timm': {'weight1': tensor(...), 'weight2': tensor(...)}, 'clip': {'weightA': tensor(...), 'weightB': tensor(...)}, ...}
+    """
+    weights_dict = Dict(
+        timm=timm_weights if 
+                            timm_weights is not None 
+                            else {},
+        clip=clip_weights if 
+                            clip_weights is not None 
+                            else {},
+        open_clip=open_clip_weights if 
+                            open_clip_weights is not None 
+                            else {},
+        eva02=eva02_weights if 
+                            eva02_weights is not None 
+                            else {},
+        dino=dino_weights if 
+                            dino_weights is not None 
+                            else {},
+        vivit=vivit_weights if 
+                            vivit_weights is not None 
+                            else {},
+        vjepa=vjepa_weights if 
+                            vjepa_weights is not None 
+                            else {},
+        kandinsky_clip=kandinsky_clip_weights if 
+                            kandinsky_clip_weights is not None 
+                            else {},    
+    )
 
 # ===============================
 # Helper Functions
