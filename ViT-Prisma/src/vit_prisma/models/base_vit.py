@@ -36,7 +36,7 @@ from vit_prisma.prisma_tools.activation_cache import ActivationCache
 from vit_prisma.prisma_tools.hook_point import HookPoint
 from vit_prisma.prisma_tools.hooked_root_module import HookedRootModule
 from numpy import einsum as np_einsum
-
+import torch.nn.functional as F
 from vit_prisma.utils import devices
 from vit_prisma.utils.prisma_utils import transpose
 from vit_prisma.sae.sae_utils import get_deep_attr, set_deep_attr
@@ -47,6 +47,7 @@ from typing import Any, Callable, List
 
 from vit_prisma.sae.sae import SparseAutoencoder as SAE
 import warnings
+
 
 DTYPE_FROM_STRING = {
     "float32": torch.float32,
@@ -220,8 +221,10 @@ class HookedViT(HookedTransformer):
             logging.warning("use_cls_token not found in config, not using CLS token.")
 
         pos_embed = self.hook_pos_embed(self.pos_embed(input))
-
-        residual = embed + pos_embed
+        print ("Positional embedding shape:", pos_embed.shape)
+        pad_embed = F.pad(embed,(pos_embed.shape[-1]-embed.shape[-1],0,0,0),"constant",0) # Pad the last dimension of the embedding to match the positional embedding
+        print ("Padded embedding shape:", pad_embed.shape)
+        residual = pad_embed + pos_embed
 
         self.hook_full_embed(residual)
 
