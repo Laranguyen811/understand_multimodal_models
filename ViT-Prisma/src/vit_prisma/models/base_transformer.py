@@ -15,7 +15,7 @@ from vit_prisma.models.weight_conversion import fill_missing_keys
 from vit_prisma.utils.enums import ModelType
 from vit_prisma.utils.prisma_utils import transpose
 
-from vit_prisma.models.model_loader import load_hooked_model
+from vit_prisma.models.model_loader import HookedModelLoader
 
 DTYPE_FROM_STRING = {
     "float32": torch.float32,
