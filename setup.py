@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from setuptools import setup, find_packages
 
 
@@ -51,3 +52,7 @@ setup(
         'arrow': ['pyarrow']  # to use: pip install -e .[sae] # as of 2.1.3, windows will require pip install sae-lens==2.1.3 --no-dependencies followed by manually installing needed packages
     },
 )
+=======
+packages=find_packages(where='ViT-Prisma/src')
+package_dir={'': 'ViT-Prisma/src'}
+>>>>>>> 53ce8169b9e09d8c9a1c1c3d0d3603677d06a194
