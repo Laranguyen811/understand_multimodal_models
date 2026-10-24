@@ -16,7 +16,7 @@ DEVICE = "cuda"
 # Filter only OpenCLIP models from the sets
 TEST_MODELS = [
     model[len("open-clip:") :]
-    for model in PASSING_MODELS.union(FAILING_MODELS)
+    for model in PASSING_MODELS["OPEN_CLIP"] | FAILING_MODELS["OPEN_CLIP"]
     if model.startswith("open-clip:")
 ]
 

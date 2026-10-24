@@ -1138,10 +1138,11 @@ def normalise_l2(name, text_projected, vision_projected):
 normalised_text_projected, normalised_vision_projected = normalise_l2('CLIP', projected_text_embeds, projected_vision_embeds) 
 plot_embeddings(
     image_embeds=normalised_vision_projected.cpu().numpy(),
-    text_embeds=normalised_vision_projected.cpu().numpy(),
+    text_embeds=normalised_text_projected.cpu().numpy(),
     labels=image_labels + text_labels,  # Combine text labels and captions for unique labels
     modality_labels=[0] * len(normalised_vision_projected) + [1] * len(normalised_text_projected),  # 0 for image embeddings, 1 for text embeddings
     title="Normalised CLIP Image and Text Embeddings in 2D UMAP Space"
     
 )
+
 

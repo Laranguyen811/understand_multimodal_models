@@ -425,3 +425,4 @@ class TestCleanModelName:
     def test_special_symbols_not_replaced(self):
         """Test that symbols not in replacement list are preserved."""
         assert clean_model_name("model@name#test$value") == "model@name#test$value"
+

@@ -20,7 +20,12 @@ class PosEmbedding(nn.Module):
             cfg = HookedViTConfig.from_dict(cfg)
         self.cfg = cfg
 
-        num_patches = (self.cfg.image_size // self.cfg.patch_size)**2
+        if (hasattr(self.cfg, 'image_size') 
+            and hasattr(self.cfg, 'patch_size')):
+            num_patches = (self.cfg.image_size // self.cfg.patch_size)**2
+        else:
+            warnings.warn("image_size or patch_size not found in config, defaulting to image_size=224 and patch_size=16 for positional embedding.")
+            num_patches = (224 // 16)**2
 
         if hasattr(self.cfg, 'is_video_transformer') and self.cfg.is_video_transformer:
             num_patches = num_patches*(self.cfg.video_num_frames//self.cfg.video_tubelet_depth)
