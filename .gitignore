@@ -143,3 +143,6 @@ configs/
 ehthumbs.db
 Thumbs.db
 .idea
+
+# Downloaded model weights
+cache/
